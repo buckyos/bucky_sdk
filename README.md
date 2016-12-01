@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/buckyos/bucky_sdk.svg?branch=master)](https://travis-ci.org/buckyos/bucky_sdk)
 小应用云(Tiny App Cloud) SDK （版本0.7.1) 简单使用说明
 
 欢迎使用小应用云提供的bucky框架来快速构建您自己的小程序。bucky框架可以让后台开发不再需要关系后台主机的购买，配置开发，上线运维等繁琐的传统等业务无关的流程。只需要像编写一个本地模块一样开发／测试好一个“远端模块”，再发布到小应用云就完成了后台的开发工作。只需掌握javascript基础即可使用，无需学习其它技能。
