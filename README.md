@@ -9,40 +9,42 @@ bucky框架目前是一个后台框架，掌握之后除了给微信小程序开
 我们使用7.1版本的nodejs进行开发。所以，请先安装使用该版本以上的nodejs。
 
 ##确保sdk目录可以使用下列npm包,sdk提供的各种工具会依赖这些库
-npm install xmlhttprequest
-npm install deepcopy
-npm install adm-zip
+>npm install xmlhttprequest
+>npm install deepcopy
+>npm install adm-zip
 
 安装完成后，你可以在sdk目录下运行
-node tools.js
-node node_loader.js 
+>node tools.js
+>node node_loader.js 
 如果运行没有抛出异常就说明sdk安装成功可以正常工作了。
 
 #SDK中包含的内容简介
-首先阅读 doc/manual.md ，这是一个入门手册，可以用来一步一步的学习bucky框架
-然后SDK中携带了一些实例，通过把这些实例跑起来可以建立起对bucky框架使用更直观的认识
-开始使用bucky开发自己的项目后，可以通过 doc/reference.md 详细了解各个接口函数的意义和参数列表。 
+首先阅读 doc/manual.md ，这是一个入门手册，可以对bucky的各种基础概念有个大概的了解。  
+然后阅读 doc/step by step.md，通过把sdk带的account demo运行起来，一步一步的学习bucky框架。  
+开始使用bucky开发自己的项目后，可以通过 doc/reference.md 详细了解各个接口函数的意义和参数列表。   
 
 ##核心文件
-wx_core.js 在微信小程序中使用的bucky框架核心文件
-h5_core.js 在浏览器环境中使用的bucky框架核心文件
-node_core.js 在nodejs环境中使用的bucky框架核心文件
+`wx_core.js` 在微信小程序中使用的bucky框架核心文件  
+`h5_core.js` 在浏览器环境中使用的bucky框架核心文件  
+`node_core.js` 在nodejs环境中使用的bucky框架核心文件  
 
 ##工具
-node_loader.js 基于nodejs环境的加载器，可用作日常开发调试
-tools.js bucky提供的一系列工具的合集，包括发布代码，修改应用系统状态，进行代码检查等等等等。
++ tools.js -- 发布，停止，开始app的工具
++ proxytools.js -- 生成proxy包的工具
++ node_loader.js -- nodejs环境下的启动工具
++ clean_local.js -- 清楚本地调试后产生的临时文件
 
 ##示例
 目前sdk中带有一个例子
-##account
-一个账号管理的例子，实现了最简单的注册，登陆接口。可以通过这个例子，了解一些最基础的概念是如何使用的。
-可以在微信小程序，浏览器，nodejs环境中运行。
+##account demo
+一个账号管理的例子，实现了最简单的注册，登陆接口。可以通过这个例子，了解一个基于bucky简单但完整的应用是怎样的。  
+该Demo可以在微信小程序，浏览器，nodejs环境中运行。  
 
 #意见和讨论
-小应用云目前处于内测阶段，官方网站还在建设中。使用过程中有任何问题和建议，欢迎随时和我们联系
-email:tac@buckyos.com
-QQ群:435095186
-github:https://github.com/buckyos/bucky_sdk
+小应用云目前处于内测阶段，官方网站还在建设中。使用过程中有任何问题和建议，欢迎随时和我们联系: 
++email:tac@buckyos.com
++QQ群:435095186
++github:https://github.com/buckyos/bucky_sdk
 
 
 
