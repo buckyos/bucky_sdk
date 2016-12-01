@@ -35,11 +35,13 @@ Application对象，用来得到当前运行的分布式应用的信息
 异步初始化Application对象。Application对象会从core service中读取必要的信息，所以这个操作时异步的。  
 #### 参数列表  
 #### `appInfo`：一般从app.json读取，内容如下：  
->{  
->  "appID" : "bx.demos.account",  
->  "appHost" : "https://weixin.xmaose.com/apphost/",  
->  "repositoryHost" : "https://weixin.xmaose.com/repository/"  
->}  
+```
+{  
+  "appID" : "bx.demos.account",  
+  "appHost" : "https://weixin.xmaose.com/apphost/",  
+  "repositoryHost" : "https://weixin.xmaose.com/repository/"  
+} 
+```
 appID是应用的唯一ID。  
 appHost与repositoryHost是app运行依赖的核心服务地址。配置不同的服务器可以用来区分线上版本和开发版本。  
 

@@ -6,13 +6,16 @@
 
 ### app.json
 目前app.json的内容非常简单，内容如下
->{
->  "appID" : "bx.demos.account",
->  "appHost" : "https://weixin.xmaose.com/apphost/",
->  "repositoryHost" : "https://weixin.xmaose.com/repository/",
->  "appver" : "1.0.0.1",
->  "token" : "abcdef0123"
->}
+
+```
+{
+  "appID" : "bx.demos.account",
+  "appHost" : "https://weixin.xmaose.com/apphost/",
+  "repositoryHost" : "https://weixin.xmaose.com/repository/",
+  "appver" : "1.0.0.1",
+  "token" : "abcdef0123"
+}
+```
 
 定义了Application的唯一ID,app相关信息，以及该Application依赖的core service的地址。
 开发者需要修改的是appID,请按 域名.产品 的方法定义一个唯一的appID.
@@ -33,25 +36,27 @@ XARPackage的结构如下
 
 ### config.json
 一个典型的config.json的格式如下
->{
->	"packageID" : "userinfo",
->	"version" : "1.0.0.0",
->	"build" : 1,
->	"meta" : { 
->		"desc" : "userinfo storage"
->	},
->
->	"depends" : [],
->	"modules" : {
->		"client" : "client.js",
->	},
->
->   "deviceType" : "pc_server",
->	"drivers" : [
->	],
->	"storages" : ["/users/"],
->   "knowledges" : ["global.events","global.runtimes","global.devices","global.storages","global.loadrules"]
->}
+```
+{
+	"packageID" : "userinfo",
+	"version" : "1.0.0.0",
+	"build" : 1,
+	"meta" : { 
+		"desc" : "userinfo storage"
+	},
+
+	"depends" : [],
+	"modules" : {
+		"client" : "client.js",
+	},
+
+   "deviceType" : "pc_server",
+	"drivers" : [
+	],
+	"storages" : ["/users/"],
+   "knowledges" : ["global.events","global.runtimes","global.devices","global.storages","global.loadrules"]
+}
+```
 
 packageID:关键字段 需要与代码当前的目录名相同
 version:友好版本，给人看的，并无实际功能
@@ -67,17 +72,19 @@ knowledges:关键字段 定义了package依赖的knowledges(后面会介绍knowl
 
 ### module
 一个典型的module的代码如下，基本上和nodejs的module写法一致
->"use strict";
->function md5(str,onComplete) {
->    console.log("md5:" + str);
->	 onComplete(str);
->}
->function foo(str) {
->	console.log("foo:" + str);	
->}
->
->module.exports = {};
->module.exports.md5 = md5;
+```
+"use strict";
+function md5(str,onComplete) {
+    console.log("md5:" + str);
+	 onComplete(str);
+}
+function foo(str) {
+	console.log("foo:" + str);	
+}
+
+module.exports = {};
+module.exports.md5 = md5;
+```
 
 在这个module中只导出了一个接口函数md5,而foo是内部函数，只能在module内部使用。
 被导出的函数的最后一个参数`必须`是`完成函数`，也就是说，导出的函数默认是`异步`的。
@@ -97,13 +104,15 @@ Runtime从物理上很像一个虚拟机，由自己独立的沙盒环境（包�
 
 ### 加载XARPackage的流程简介
 Runtime最重要的功能就是加载并运行代码，这段代码写起来如下：
->getCurrentRuntime().loadXARPackage("packageA",function(thePackage) {
->    thePackage.loadModule("moduleA",function (moduleA,errorCode) {
->         moduleA.md5("test", function (result, errorCode) {
->             console.log("md5 result is " + result);
->         });
->     });
-> });
+```
+getCurrentRuntime().loadXARPackage("packageA",function(thePackage) {
+    thePackage.loadModule("moduleA",function (moduleA,errorCode) {
+         moduleA.md5("test", function (result, errorCode) {
+             console.log("md5 result is " + result);
+         });
+     });
+});
+```
 
 这段代码的实现流程简介如下
 1.通过读取global.loadrule,以及packageA的依赖项目，判断当前Runtime是否能直接记载packageA,不能直接加载则加载packageA.proxy
@@ -125,10 +134,10 @@ Device对象通常通过getCurrentRuntime().getOwnerDevice()的方法获得，�
 ### Driver
 由于Driver是Device的本地功能，所以使用同步的方法加载。加载代码如下：
 >let mysqlDriver = getCurrentRuntime().getDriver("bx.mysql.client")	
-如果当前设备由安装"bx.mysql.client"驱动，那么就能加载成功。（使用驱动并不需要访问Device对象）
-目前框架只支持少量的驱动，列表如下 
-bx.mysql.client
-bx.redis.client
+如果当前设备由安装"bx.mysql.client"驱动，那么就能加载成功。（使用驱动并不需要访问Device对象） 
+目前框架只支持少量的驱动，列表如下   
+bx.mysql.client  
+bx.redis.client  
 
 我们面向微信小程序定制的TinyAppCloud为了减少编写后台应用所需要的知识，目前并没有支持这些驱动。使用者也不用学习sql语句和redis api了。
 
@@ -136,12 +145,13 @@ bx.redis.client
 当Runtime试图加载一个XARPackage时，系统会判断该Package是否适合加载在当前Runtime,如果不适合，那么机会尝试寻找一个已经加载了该XARPackage的Runtime(或则创建一个)。而在当前Runtime里加载的，则是一个Proxy Package.
 Proxy Package实现了原始Package中的所有模块和接口，目前这些接口的实现都非常简单：
 
->let thisRutnime = getCurrentRuntime();
->let rpc_args = arguments;
->thisRutnime.selectTargetRuntime("userinfo",username,function(targetRuntime) {
->    thisRutnime.postRPCCall(targetRuntime,"userinfo:userinfo:Login",rpc_args,"",onComplete);
->});
-
+```
+let thisRutnime = getCurrentRuntime();
+let rpc_args = arguments;
+thisRutnime.selectTargetRuntime("userinfo",username,function(targetRuntime) {
+    thisRutnime.postRPCCall(targetRuntime,"userinfo:userinfo:Login",rpc_args,"",onComplete);
+});
+```
 简单的说，就是为目标Package选择一个合适的Runtime加载，然后在发起一个从当前Runtime到目标Runtime的RPC Call.
 每一个XARPackage都应该有一个Proxy Package.我们提供来工具来生成这些Proxy Package.
 整个系统是不存在魔法的，通过阅读Proxy的代码，应用工程师也可以使用现有的知识来分析调试应用系统。而且系统也允许高级开发者根据需要，定制自己的Proxy逻辑。
@@ -152,12 +162,14 @@ Knowledges是应用开发过程中需要经常打交道的一个核心概念，�
 
 Knowledge采用key-value设计，一个典型的使用Knowledge的代码如下
 
->let km = getCurrentRuntime().getKnowledgeManager();
->km.dependKnowledge("myconfig");
->	km.ready(function(){
->	let myconfig = km.getKnowledge("myconfig").objectRead();
->	let back_color = myconfig["back_color"]
->});
+```
+let km = getCurrentRuntime().getKnowledgeManager();
+km.dependKnowledge("myconfig");
+	km.ready(function(){
+	let myconfig = km.getKnowledge("myconfig").objectRead();
+	let back_color = myconfig["back_color"]
+});
+```
 
 可以看到，使用Knowledge需要等待一个异步更新，以便得到系统的最新配置。框架为了简化这个过程，可以在XARPackage中配置依赖的Knowledge,这样在完成XARPackage加载后，运行应用代码前，框架就已经在当前Runtime里同步好了需要的Knowledge.
 Runtime依赖的Knowledge会尽可能的自动保持同步。
@@ -169,19 +181,22 @@ Knowledges机制的核心是 更新->同步。简单使用只需要掌握同步�
 大部分后台系统的核心需求，就是`存储特定格式的数据`。Storages就是为了解决这个问题提供的概念。应用代码使用Storages一定会消耗应用的`磁盘资源`。
 Bucky里的状态存储需求分为两大类，一类是整个系统存储的状态，称作Storages.另一类是某个runtime运行中需要存储的状态，称作Local storage（内测版还未开放接口）。
 整个系统需要存储的状态，可以理解为一堆存放在不同目录的“对象”，目录格式类似于 `/` ,`/data/` 这种形式。具体的使用接口有点类似html5的local storage的设计，实例代码如下:
->let rs = thisRuntime.getRuntimeStorage("/users/");
->let uobj = {"id":"admin","password":"123123123","desc":"admin user"};
->
->rs.isObjectExists(uobj.id,function(objid,isExists) {
->	if(isExists) {
->		logger.info("admin is exists");
->	} else {
->		logger.info("admin not register,will add user");
->		rs.setObject(uobj.id,uobj,function(){
->			logger.info("admin register ok");
->		});
->	}
->});
+
+```
+let rs = thisRuntime.getRuntimeStorage("/users/");
+let uobj = {"id":"admin","password":"123123123","desc":"admin user"};
+
+rs.isObjectExists(uobj.id,function(objid,isExists) {
+	if(isExists) {
+		logger.info("admin is exists");
+	} else {
+		logger.info("admin not register,will add user");
+		rs.setObject(uobj.id,uobj,function(){
+			logger.info("admin register ok");
+		});
+	}
+});
+```
 
 上述代码要正确运行，其所在的package的config.json里要有`"storages" : ["/users/"]`的配置。如果没有正确进行配置，`thisRuntime.getRuntimeStorage("/users/")`将返回null.
 正确的使用Storages需要首先进行建模，思考系统需要存储的数据，以及这些数据是如何进行分区的。
