@@ -9,9 +9,9 @@ bucky框架目前是一个后台框架，掌握之后除了给微信小程序开
 我们使用7.1版本的nodejs进行开发。所以，请先安装使用该版本以上的nodejs。
 
 ##确保sdk目录可以使用下列npm包,sdk提供的各种工具会依赖这些库
->npm install xmlhttprequest
->npm install deepcopy
->npm install adm-zip
+>npm install xmlhttprequest  
+>npm install deepcopy  
+>npm install adm-zip  
 
 安装完成后，你可以在sdk目录下运行
 >node tools.js
@@ -42,9 +42,9 @@ bucky框架目前是一个后台框架，掌握之后除了给微信小程序开
 
 #意见和讨论
 小应用云目前处于内测阶段，官方网站还在建设中。使用过程中有任何问题和建议，欢迎随时和我们联系: 
-+email:tac@buckyos.com
-+QQ群:435095186
-+github:https://github.com/buckyos/bucky_sdk
++ email:tac@buckyos.com
++ QQ群:435095186
++ github:https://github.com/buckyos/bucky_sdk
 
 
 
