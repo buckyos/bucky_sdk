@@ -1,7 +1,0 @@
-{
-  "appID" : "YOUR_APP_ID",
-  "appHost" : "https://weixin.xmaose.com/apphost/",
-  "repositoryHost" : "https://weixin.xmaose.com/repository/",
-  "appver" : "1.0.0.1",
-  "token" : "abcdef0123"
-}
