@@ -135,46 +135,47 @@ node环境直接运行即可
 
 #总结
 account实现的是一个非常简单的用户管理服务，服务的核心代码只有下面这么多：
->function Login(username,md5Pwd,onComplete) {
->    let thisRuntime = getCurrentRuntime();
->    let rs = thisRuntime.getRuntimeStorage("/users/");
+
+>function Login(username,md5Pwd,onComplete) {  
+>    let thisRuntime = getCurrentRuntime();  
+>    let rs = thisRuntime.getRuntimeStorage("/users/");  
 >
->    rs.getObject("user." + username,function(objid,usrObj) {
->        if(usrObj) {
->            if(usrObj.password == md5Pwd) {
->                onComplete(0);
->            } else {
->                onComplete(1);
+>    rs.getObject("user." + username,function(objid,usrObj) {  
+>        if(usrObj) {  
+>            if(usrObj.password == md5Pwd) {  
+>                onComplete(0);  
+>            } else {  
+>                onComplete(1);  
 >            }
->        } else {
->            onComplete(3);
->        }
->    });
->}
+>        } else {  
+>            onComplete(3);  
+>        }  
+>    });  
+>}  
 >
->function Register(username,md5pwd,desc,onComplete) {
->    let thisRuntime = getCurrentRuntime();
->    let rs = thisRuntime.getRuntimeStorage("/users/");
->    let uobj = {};
->    uobj.id = username;
->    uobj.password = md5pwd;
->    uobj.desc = desc;
+>function Register(username,md5pwd,desc,onComplete) {  
+>    let thisRuntime = getCurrentRuntime();  
+>    let rs = thisRuntime.getRuntimeStorage("/users/");  
+>    let uobj = {};  
+>    uobj.id = username;  
+>    uobj.password = md5pwd;  
+>    uobj.desc = desc;  
 >   
->    let objid = "user." + username;
+>    let objid = "user." + username;  
 >
->    rs.isObjectExists(objid,function(objid,isExists) {
->        if(isExists) {
->            logger.info("user is exists");
->            onComplete(1);
->        } else {
->            logger.info("user not register,will add user");
->            rs.setObject(objid,uobj,function(){
->                logger.info("user register ok");
->                onComplete(0);
->            });
->        }
->    });
->}
+>    rs.isObjectExists(objid,function(objid,isExists) {  
+>        if(isExists) {  
+>            logger.info("user is exists");  
+>            onComplete(1);  
+>        } else {  
+>            logger.info("user not register,will add user");  
+>            rs.setObject(objid,uobj,function(){  
+>                logger.info("user register ok");  
+>                onComplete(0);  
+>            });  
+>        }  
+>    });  
+>}  
 
 只要有js的基础，相信理解上述代码并不困难。完成代码编写后，发布代码到小应用云，我们会在云端为这段代码调度合适的运行容器，实现服务化。
 
