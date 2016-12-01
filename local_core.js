@@ -320,27 +320,34 @@ class BaseLib {
         return files;
     }
 
-    static findOnceSync(root, pattern) {
+    static findOnceSync(root, pattern,type) {
         if(BaseLib.dirExistsSync(root)){
             var files = fs.readdirSync(root);
             for(var i in files){
                 var file = files[i];
                 var fullFileName = path.join(root, file);
 
-                if (BaseLib.dirExistsSync(fullFileName) && pattern.test(fullFileName)) {
-                    return path.normalize(fullFileName) + PATH_SEPARATOR ;
+                if(type=='dir'){
+                    if (BaseLib.dirExistsSync(fullFileName) && pattern.test(fullFileName)) {
+                        return path.normalize(fullFileName) + PATH_SEPARATOR ;
+                    }
+                }else if(type=='file'){
+                    if (BaseLib.fileExistsSync(fullFileName) && pattern.test(fullFileName)) {
+                        return path.normalize(fullFileName);
+                    }
                 }
             };
         }
         return null;
     }
 
-    static findOutDir(root,target){
+
+    static findOutFile(root,target,type){
         root = path.dirname(root);
         while(true){
-            var dirName = BaseLib.findOnceSync(root,target);
-            if(dirName!=null){
-                return dirName;
+            var name = BaseLib.findOnceSync(root,target,type);
+            if(name!=null){
+                return name;
             }else{
                 var old = root;
                 root = path.dirname(root);
@@ -1062,7 +1069,7 @@ class Repository{
             folder = process.cwd();
         }
 
-        var moduleDir = BaseLib.findOutDir(folder,new RegExp(BX_BUCKY_MODULE));
+        var moduleDir = BaseLib.findOutFile(folder,new RegExp(BX_BUCKY_MODULE),'dir');
         if(moduleDir==null){
             moduleDir = path.dirname(folder)+PATH_SEPARATOR+BX_BUCKY_MODULE;
             BaseLib.mkdirsSync(moduleDir);
@@ -1070,6 +1077,11 @@ class Repository{
 
         bucky_modules_dir = moduleDir;
         return moduleDir;
+    }
+
+    static findAppDir(appConfigFile){
+        var appConfigDir = path.dirname(appConfigFile);
+        return appConfigDir;
     }
 
 
@@ -1089,9 +1101,10 @@ class Repository{
         onSuccess(true,loadPackage)
     }
 
-    static pub_fake(appfolder, repositoryHost, app, onSuccess){
-
+    static pub_fake(packagesDir, appConfigFile, app, onSuccess){
+        var appfolder = Repository.findAppDir(appConfigFile);
         var rpath = Repository.findModuleDir(appfolder);
+
         var metaFile = rpath+PATH_SEPARATOR+'.meta';
         var meta = {};
         if(BaseLib.fileExistsSync(metaFile)){
@@ -1148,7 +1161,7 @@ class Repository{
 
 
             var pkgEntryName = pkg.relativepath+"/";
-            pkgVerMeta.source = appfolder+PATH_SEPARATOR+pkg.relativepath;
+            pkgVerMeta.source = path.join(packagesDir,pkg.relativepath);
             if(BaseLib.dirExistsSync(pkgPath)){
                 BaseLib.deleteFolderRecursive(pkgPath);
             }
@@ -1378,34 +1391,24 @@ class Repository{
         return true;
     }
 
-    static loadAppInfo(appfolder, appConfigFile){
-        BX_INFO('->appfolder:'+appfolder);
+    static loadAppInfo(packagesDir, appConfigFile){
+        BX_INFO('->packagesDir:'+packagesDir);
         BX_INFO('->appConfigFile:'+appConfigFile);
-        let maindir = appfolder;
-        let appConfig = maindir + "/app.json";
-
-        if (appConfigFile != null && appConfigFile != "") {
-            appConfig = appConfigFile;
-            BX_INFO('->appConfigFile assign:'+appConfig);
-        }else{
-            BX_INFO('->appConfigFile default:'+appConfig);
-        }
 
         var errorNum = 0;
         var warNum = 0;
         var appInfo = null;
 
-        BX_INFO("->Read app config from: " + appConfig);
         try {
-            appInfo = JSON.parse(fs.readFileSync(appConfig));
+            appInfo = JSON.parse(fs.readFileSync(appConfigFile));
         } catch (err) {
             BX_INFO("->ERROR: Cann't read app info!");
             process.exit(1);
         }
 
-        BX_INFO("->Start publish packages from " + maindir);
+        BX_INFO("->Start publish packages from " + packagesDir);
         var packageList = new Array();
-        Repository.searchPackage(maindir,packageList);
+        Repository.searchPackage(packagesDir,packageList);
         var willPubPackageList = new Array();
 
 
@@ -1441,7 +1444,6 @@ class Repository{
             }
 
 
-
             for (let moduleID in packageInfo.modules) {
                 let moduleFile = packageInfo.modules[moduleID];
                 try {
@@ -1453,15 +1455,11 @@ class Repository{
             }
 
 
-
-
-
             willPubPackageList.push({
-                "relativepath":packageDir.replace(appfolder+'/',""),
+                "relativepath":packageDir.replace(packagesDir+'/',""),
                 "info":packageInfo
             });
         }
-
 
         let info = {
             "app":appInfo,
@@ -1472,9 +1470,9 @@ class Repository{
         return info;
     }
 
-    static createPubPackage(appfolder,appConfigFile,traceId,token,onSuccess){
+    static createPubPackage(packagesDir,appConfigFile,traceId,token,onSuccess){
 
-        var appInfo = Repository.loadAppInfo(appfolder, appConfigFile);
+        var appInfo = Repository.loadAppInfo(packagesDir, appConfigFile);
 
         var pubPackage = {
            "ver":"1001",
@@ -1502,7 +1500,7 @@ class Repository{
 
 
         var zip = new Zip();
-        zip.loadFolderAsync(appfolder,function(zipData){
+        zip.loadFolderAsync(packagesDir,function(zipData){
             pubPackage.body.md5 = BaseLib.md5(zipData);
             pubPackage.body.length = zipData.length;
             pubPackage.body.type="zip";
@@ -1512,11 +1510,32 @@ class Repository{
         })
     }
 
-    static pub(appfolder,appConfigFile,traceId,token,onSuccess){
-        Repository.createPubPackage(appfolder,appConfigFile,traceId,token,function(repositoryHost, pkg){
+    static pub(packagesDir,appConfigFile,traceId,token,onSuccess){
+
+        if(!path.isAbsolute(packagesDir)){
+            packagesDir = path.join(process.cwd(),packagesDir);
+        }
+        BX_INFO("packages dir:"+packagesDir);
+
+        if(!path.isAbsolute(appConfigFile)){
+            appConfigFile = path.join(process.cwd(),appConfigFile);
+        }
+        BX_INFO("appConfiFile:"+packagesDir);
+
+        if(!BaseLib.dirExistsSync(packagesDir)){
+            BX_ERROR("ERROR: packagesDir is not exist:"+packagesDir);
+            process.exit(1);
+        }
+
+        if (!BaseLib.fileExistsSync(appConfigFile)) {
+            BX_ERROR("ERROR: appConfigFile is not exist:"+appConfigFile);
+            process.exit(1);
+        }
+
+        Repository.createPubPackage(packagesDir,appConfigFile,traceId,token,function(repositoryHost, pkg){
             if(repository_mode==BX_REPOSITORY_FAKE){
 
-                Repository.pub_fake(appfolder, repositoryHost, pkg, function(ret){
+                Repository.pub_fake(packagesDir, appConfigFile, pkg, function(ret){
                     var resp = {
                         "ver":pkg.ver,
                         "appid":pkg.appid,

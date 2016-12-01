@@ -678,7 +678,7 @@ class Repository{
             folder = process.cwd();
         }
 
-        var moduleDir = BaseLib.findOutDir(folder,new RegExp(BX_BUCKY_MODULE));
+        var moduleDir = BaseLib.findOutFile(folder,new RegExp(BX_BUCKY_MODULE),'dir');
         if(moduleDir==null){
             moduleDir = path.dirname(folder)+PATH_SEPARATOR+BX_BUCKY_MODULE;
             BaseLib.mkdirsSync(moduleDir);
@@ -686,6 +686,11 @@ class Repository{
 
         bucky_modules_dir = moduleDir;
         return moduleDir;
+    }
+
+    static findAppDir(appConfigFile){
+        var appConfigDir = path.dirname(appConfigFile);
+        return appConfigDir;
     }
 
 
@@ -705,9 +710,10 @@ class Repository{
         onSuccess(true,loadPackage)
     }
 
-    static pub_fake(appfolder, repositoryHost, app, onSuccess){
-
+    static pub_fake(packagesDir, appConfigFile, app, onSuccess){
+        var appfolder = Repository.findAppDir(appConfigFile);
         var rpath = Repository.findModuleDir(appfolder);
+
         var metaFile = rpath+PATH_SEPARATOR+'.meta';
         var meta = {};
         if(BaseLib.fileExistsSync(metaFile)){
@@ -764,7 +770,7 @@ class Repository{
 
 
             var pkgEntryName = pkg.relativepath+"/";
-            pkgVerMeta.source = appfolder+PATH_SEPARATOR+pkg.relativepath;
+            pkgVerMeta.source = path.join(packagesDir,pkg.relativepath);
             if(BaseLib.dirExistsSync(pkgPath)){
                 BaseLib.deleteFolderRecursive(pkgPath);
             }
