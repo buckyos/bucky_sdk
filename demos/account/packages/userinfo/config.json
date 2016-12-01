@@ -1,0 +1,18 @@
+{
+	"packageID" : "userinfo",
+	"version" : "1.0.0.0",
+	"build" : 1,
+	
+	"meta" : { 
+		"desc" : "this is a demo"
+	},
+	"deviceType" : "pc_server",
+	"depends" : [],
+	"modules" : {
+		"userinfo" : "userinfo.js"
+	},
+	"knowledges" : ["global.events","global.runtimes","global.devices","global.storages","global.loadrules"],
+	"drivers" : [],
+	"storages" : ["/users/"]
+
+}

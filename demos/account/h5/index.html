@@ -1,0 +1,70 @@
+<html>
+<head>
+    <meta http-equiv="content-type" content="text/html;charset=utf-8">
+</head>
+<body>
+<script type="text/javascript" src="./h5_core.js"></script>
+<script type="text/javascript">
+
+let app = new Application();
+setCurrentApp(app);
+
+let appMetaInfo = {};
+appMetaInfo.appID = "YOUR_APP_ID";
+appMetaInfo.appHost = "https://weixin.xmaose.com/apphost/"; //可以从某个描述文件里加载
+appMetaInfo.repositoryHost = "https://weixin.xmaose.com/repository/";
+appMetaInfo.appver = "1.0.0.1";
+appMetaInfo.token = "abcdef0123";
+
+
+app.init(appMetaInfo,function(errorCode,metaInfo) {
+  document.write("on app init,result=" + errorCode+"<p>" );
+
+  initCurrentRuntime(app);
+
+  let thisRuntime = getCurrentRuntime();
+  document.write("runtimeID:" + thisRuntime.getInstanceID()+"<p>");
+  let thisDevice = thisRuntime.getOwnerDevice();
+  document.write("deviceID:"+thisDevice.getDeviceID()+"<p>");
+  let ownerUserID = thisDevice.getOwnerUserID();
+  document.write("userid:" + ownerUserID+"<p>");
+
+  //接口还是先放到Runtime里，这个设计选择很重要，需要仔细考虑
+  //这关系到开发者如何看待 "系统加载代码，并在某个容器里运行" 这件最重要的事情
+  let km = thisRuntime.getKnowledgeManager();
+  km.dependKnowledge("global.events");
+  km.dependKnowledge("global.runtimes");
+  km.dependKnowledge("global.devices");
+  km.dependKnowledge("global.loadrules");
+  km.ready(function() {
+    let thisRuntime = getCurrentRuntime();
+    thisRuntime.loadXARPackage("client",function(thePackage) {
+        if(thePackage) {
+            document.write("load client XAR OK<p>");
+        } else {
+            document.write("load XAR faield<p>");
+        }
+
+        thePackage.loadModule("client",function(theModule) {
+            let clientModule = theModule;
+            document.write("load client module ok<p>");
+            clientModule.testLogin(function() {
+                document.write("testLogin return failed<p>");
+                clientModule.testRegister(function() {
+                    document.write("testRegister ok<p>");
+                    clientModule.testLogin(function() {
+                        document.write("testLast login ok<p>");
+                    });
+                });
+            });
+        })
+    });
+  });
+
+});
+
+
+document.write("OK");
+</script>
+</body>
+</html>
