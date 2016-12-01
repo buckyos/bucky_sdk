@@ -1,0 +1,16 @@
+{
+	"packageID" : "client",
+	"version" : "1.0.0.0",
+	"build" : 1,
+	"deviceType" : "*",
+	"meta" : { 
+		"desc" : "unit test client"
+	},
+	"depends" : [],
+	"modules" : {
+		"client" : "client.js"
+	},
+	"knowledges" : ["global.events","global.runtimes","global.devices","global.storages","global.loadrules"],
+	"drivers" : [
+	]
+}
