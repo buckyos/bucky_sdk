@@ -14,8 +14,8 @@ bucky框架目前是一个后台框架，掌握之后除了给微信小程序开
 >npm install adm-zip  
 
 安装完成后，你可以在sdk目录下运行
->node tools.js
->node node_loader.js 
+>node tools.js  
+>node node_loader.js   
 如果运行没有抛出异常就说明sdk安装成功可以正常工作了。
 
 #SDK中包含的内容简介
