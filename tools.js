@@ -6,6 +6,7 @@ var https = require('https');
 var fs    = require('fs');
 var path  = require('path');
 var url   = require('url');
+var PATH_SEPARATOR = path.normalize("/");
 
 var rclient = core.Repository;
 
@@ -13,7 +14,6 @@ var tool_version = "1.0.0.0";
 var BX_REPOSITORY_REMOTE = core.BX_REPOSITORY_REMOTE;
 var BX_REPOSITORY_LOCAL  = core.BX_REPOSITORY_LOCAL;
 var BX_REPOSITORY_FAKE   = core.BX_REPOSITORY_FAKE;
-var rmode = BX_REPOSITORY_REMOTE;
 var BaseLib = core.BaseLib;
 
 console.log("+----------------------------------------------------+")
@@ -29,6 +29,9 @@ var maindir = null;
 var appConfig = null;
 var appInfo = null;
 var appKnowledges = null;
+
+var rmode = BX_REPOSITORY_REMOTE;
+var rmodules = __dirname+PATH_SEPARATOR+"bucky_modules";
 
 
 function printUsage() {
@@ -100,7 +103,7 @@ function doPub() {
     if(rmode!=BX_REPOSITORY_REMOTE){
         rclient.setMode(rmode)
     }
-    rclient.pub(appFolder,appConfig,traceid, token, function(ret, resp, appInfo){
+    rclient.pub(rmodules,appFolder,appConfig,traceid, token, function(ret, resp, appInfo){
     	if (ret) {
             var packageCount = appInfo.body.packages.length;
             var packageNames = "";
@@ -157,7 +160,7 @@ function doStart() {
             if(resp == 'ok') {
                 console.log(">>App:" + appInfo.appID + " started");
             } else {
-                console.log(">>Start app:" + appInfo.appID + " failed, make sure you have published it!");
+                console.log(">>Start app:" + appInfo.appID + " failed, err: "+ resp);
             }
         } else {
             console.log(">>Start app:" + appInfo.appID + " failed, error: unknown");
@@ -170,16 +173,17 @@ function checkRunning(onComplete) {
     let postURL = appInfo.appHost + "/" + appInfo.appID + checkRunningCmd;
     BaseLib.postData(postURL, "check", function (resp, code) {
         if (resp) {
-            if(resp == 'ok') {
+            onComplete(resp);
+            /*if(resp == 'ok') {
                 console.log(">>App:" + appInfo.appID + " is running");
                 onComplete(true);
             } else {
                 console.log(">>App:" + appInfo.appID + " is not running");
                 onComplete(false);
-            }
+            }*/
         } else {
             console.log(">>Check app:" + appInfo.appID + " state failed!");
-            onComplete(false);
+            onComplete("unknown");
         }
     });
 }
@@ -199,7 +203,21 @@ for(var i=3;i<process.argv.length;i++){
         appKnowledges = process.argv[i+1];
     } else if(process.argv[i].indexOf("-fake")==0) {
         rmode = BX_REPOSITORY_FAKE;
+    } else if(process.argv[i].indexOf("-modules")==0){
+        rmodules = process.argv[i+1];
     }
+}
+
+if(maindir && maindir[0] != '/' && maindir[1] != ':') {
+    maindir = __dirname + "/" + maindir;
+}
+
+if(appConfig && appConfig[0] != '/' && appConfig[1] != ':') {
+    appConfig = __dirname + "/" + appConfig;
+}
+
+if(appKnowledges && appKnowledges[0] != '/' && appKnowledges[1] != ':') {
+    appKnowledges = __dirname + "/" + appKnowledges;
 }
 
 try {
@@ -214,12 +232,12 @@ if (op == "-pub") {
     if (rmode == BX_REPOSITORY_FAKE) {
         doPub();
     } else {
-        checkRunning(function(running){
-            if (!running) {
-                doPub();
-            } else {
-                console.log(">>ERROR: App is running, stop it first!");
+        checkRunning(function(resp){
+            if (resp != "app is not running!") {
+                console.log(">>ERROR: "+resp);
                 process.exit(1);
+            } else {
+                doPub();
             }
         });
     }

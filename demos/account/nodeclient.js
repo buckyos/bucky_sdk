@@ -17,6 +17,7 @@ thisRuntime.loadXARPackage("client",function(thePackage) {
                 console.log("testRegister ok");
                 clientModule.testLogin(function() {
                     console.log("testLast login ok");
+                    console.log("Congratulations! account demo test passed!");
                     process.exit(0);
                 });
             });

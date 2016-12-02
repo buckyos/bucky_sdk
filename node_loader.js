@@ -5,6 +5,7 @@
 
 var fs = require("fs");
 var path = require("path");
+var PATH_SEPARATOR = path.normalize("/");
 
 //--------------------------------------------------------------------------------
 var mainjs = null;
@@ -17,6 +18,7 @@ var deviceConfigPath = "device.json";
 var deviceInfo = null;
 var enableLocalDebug = false;
 var localKnowledge = null;
+var modulesPath = null;
 
 for(var i=0;i<process.argv.length;i++)
 {
@@ -26,6 +28,10 @@ for(var i=0;i<process.argv.length;i++)
 
     if(process.argv[i] == "-app") {
         appConfigPath = process.argv[i+1];
+    }
+
+    if(process.argv[i] == "modules"){
+        modulesPath = process.argv[i+1];
     }
 
     if(process.argv[i] == "-local_debug") {
@@ -54,6 +60,11 @@ if(enableLocalDebug) {
     var OwnerUser = core.OwnerUser;
     var GlobalEventManager = core.GlobalEventManager;
     var initCurrentRuntime = core.initCurrentRuntime;
+
+    if(modulesPath==null){
+        modulesPath = __dirname+PATH_SEPARATOR+"bucky_modules";
+    }
+    core.Repository.setModulesPath(modulesPath);
 } else {
     var core = require("./node_core.js");
     var BaseLib = core.BaseLib;

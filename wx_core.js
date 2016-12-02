@@ -190,14 +190,14 @@ class BaseLib {
                 ++BaseLib.wxHttpConnCount;
                 let req = BaseLib.wxHttpRequestArray.shift();
                 if (req && req != undefined) {
-                    BX_LOG("do wxRequest, requestCount:"+ BaseLib.wxHttpConnCount.toString() + ", req:"+JSON.stringify(req));
+
                     doRequest(req);
                 }
             }
         }
         function onRequestComplete() {
             --BaseLib.wxHttpConnCount;
-            BX_LOG("complete wxRequest, requestCount:"+BaseLib.wxHttpConnCount.toString());
+
             submitPendingRequest();
         }
         function doRequest(req) {

@@ -41,6 +41,7 @@ Page({
                       appendLog("\r\ntestRegister result:"+result);
                       clientModule.testLogin(function(result) {
                           appendLog("\r\ntestLast login result:"+result);
+                          appendLog("\r\nCongratulations! account demo test passed!");
                       });
                   });
               });

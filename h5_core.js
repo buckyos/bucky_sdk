@@ -163,13 +163,15 @@ class BaseLib {
         var request = new XMLHttpRequest();
         request.onreadystatechange = function () {
             if(request.readyState == 4) {
+                var responseText = request.responseText;
                 if(request.status == 200) {
-                    var responseText = request.responseText;
+
                     if(onComplete) {
                         onComplete(responseText,request.status);
                     }
                 }
                 else{
+                    BX_LOG("load err: "+responseText);
                     if(onComplete) {
                         onComplete(null, request.status);
                     }
@@ -659,6 +661,7 @@ var repository_mode = BX_REPOSITORY_REMOTE;
 
 var BX_BUCKY_MODULE = "bucky_modules";
 var bucky_modules_dir = "";
+var bucky_moduels_search_dirs=[];
 class Repository{
 
     static setMode(v){
@@ -670,27 +673,52 @@ class Repository{
     }
 
     static findModuleDir(folder){
-        if(bucky_modules_dir!=""&&BaseLib.dirExistsSync(bucky_modules_dir)){
-            return bucky_modules_dir;
-        }
-
         if(folder==void 0 || !BaseLib.dirExistsSync(folder)){
-            folder = process.cwd();
+            folder = path.dirname(require.main.filename);
+            BX_INFO("set find folder:"+folder);
         }
 
-        var moduleDir = BaseLib.findOutFile(folder,new RegExp(BX_BUCKY_MODULE),'dir');
-        if(moduleDir==null){
-            moduleDir = path.dirname(folder)+PATH_SEPARATOR+BX_BUCKY_MODULE;
-            BaseLib.mkdirsSync(moduleDir);
-        }
+        BX_INFO("=> find bucky_modules_dir");
+
+        var moduleDir = null;
+        do{
+
+            moduleDir = BaseLib.findOutFile(folder,new RegExp(BX_BUCKY_MODULE),'dir');
+            if(moduleDir!=null){
+                break;
+            }
+
+            moduleDir = BaseLib.findOutFile(__filename,new RegExp(BX_BUCKY_MODULE),'dir');
+            if(moduleDir!=null){
+                break;
+            }
+
+            for(let i in bucky_moduels_search_dirs){
+                let searchPath = bucky_moduels_search_dirs[i];
+                BX_INFO("Search:"+searchPath);
+                moduleDir = BaseLib.findOnceSync(searchPath,new RegExp(BX_BUCKY_MODULE),'dir');
+                if(moduleDir!=null){
+                    break;
+                }
+            }
+        }while(false);
 
         bucky_modules_dir = moduleDir;
+
         return moduleDir;
     }
 
     static findAppDir(appConfigFile){
         var appConfigDir = path.dirname(appConfigFile);
         return appConfigDir;
+    }
+
+    static addSearchPath(searchPath){
+        bucky_moduels_search_dirs.push(searchPath);
+    }
+
+    static setModulesPath(modulesDir){
+        bucky_modules_dir = modulesDir;
     }
 
 
@@ -710,14 +738,23 @@ class Repository{
         onSuccess(true,loadPackage)
     }
 
-    static pub_fake(packagesDir, appConfigFile, app, onSuccess){
-        var appfolder = Repository.findAppDir(appConfigFile);
-        var rpath = Repository.findModuleDir(appfolder);
+    static pub_fake(moduleDir,packagesDir, appConfigFile, app, onSuccess){
 
-        var metaFile = rpath+PATH_SEPARATOR+'.meta';
+
+
+        var rpath = moduleDir;
+        BaseLib.mkdirsSync(rpath);
+        var metaFile = path.join(rpath,'.meta');
+
+        BX_INFO(metaFile);
         var meta = {};
         if(BaseLib.fileExistsSync(metaFile)){
-            meta = JSON.parse(fs.readFileSync(metaFile));
+            try{
+                meta = JSON.parse(fs.readFileSync(metaFile));
+            }catch(err){
+                BX_ERROR("ERROR:read meta failed, metaFile path:"+metaFile);
+                process.exit(1);
+            }
         }
 
         var appMeta = meta[app.appid];
@@ -739,7 +776,7 @@ class Repository{
             let pkg = app.body.packages[i];
 
 
-            var pkgPath = rpath+PATH_SEPARATOR+app.appid+"_"+pkg.id+"_"+pkg.ver;
+            var pkgPath = path.join(rpath,app.appid+"_"+pkg.id+"_"+pkg.ver);
 
 
             var pkgMeta = appMeta.packages[pkg.id];
@@ -783,17 +820,29 @@ class Repository{
         onSuccess(0);
     }
 
+    static findModuleDirCache(){
+        if(bucky_modules_dir!=""&&BaseLib.dirExistsSync(bucky_modules_dir)){
+            BX_INFO("=> hint bucky_modules dir cache");
+            return bucky_modules_dir;
+        }else{
+            return null;
+        }
+    }
+
     static load_fake(appid,traceid,token,packageid,packagever,fileName,onSuccess){
 
-        var rpath = Repository.findModuleDir();
-        console.log(rpath);
+
+        var rpath = bucky_modules_dir;
+        if(rpath.length < 1){
+            rpath = Repository.findModuleDir();
+        }
 
         var faliedResp = {
             result:1
         }
 
 
-        var metaFile = rpath+PATH_SEPARATOR+'.meta';
+        var metaFile = path.join(rpath,'.meta');
         console.log(metaFile);
 
         if(!BaseLib.fileExistsSync(metaFile)){
@@ -802,7 +851,14 @@ class Repository{
             return;
         }
 
-        var meta = JSON.parse(fs.readFileSync(metaFile));
+        var meta = "";
+        try{
+            meta = JSON.parse(fs.readFileSync(metaFile));
+        }catch(err){
+            BX_ERROR("parser meta file failed:"+metaFile);
+            onSuccess(1,faliedResp);
+            return;
+        }
         var appMeta = meta[appid];
         if(appMeta==void 0){
             BX_ERROR("missing app meta");
@@ -849,7 +905,7 @@ class Repository{
         var code = "";
         var isSource = false;
         var sourcePath = null;
-        var pkgPath = rpath+PATH_SEPARATOR+appid+"_"+packageid+"_"+packagever;
+        var pkgPath = path.join(rpath,appid+"_"+packageid+"_"+packagever);
         if(pkgVerMeta.source!=(void 0) && BaseLib.dirExistsSync(pkgVerMeta.source)){
             var modulePath = pkgVerMeta.source+PATH_SEPARATOR+fileName;
             if(BaseLib.fileExistsSync(modulePath)){
@@ -998,22 +1054,21 @@ class XARPackage {
                                 if(resp.type=='file'){
                                     if(!BaseLib.fileExistsSync(content)){
                                         onComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
-                                    }else{
-                                        let thisModule = require(content);
-                                        BX_LOG("load local module from " + content + " ok.");
-                                        onComplete(thisModule, ErrorCode.RESULT_OK);
                                     }
-                                }else{
-                                    let thisModule = {};
-                                    thisModule.info = moduleInfo;
-                                    let scriptContent = "(function(_owp_,module) {let getCurrentPackage=function(){return _owp_;}; \n" + content +"\n})(thisPackage,thisModule);";
-                                    let funcResult = eval(scriptContent);
-                                    if(funcResult) {
-                                        thisModule.exports = funcResult;
-                                    }
-                                    moduleInfo.loadedModule = thisModule.exports;
-                                    onComplete(thisModule.exports,ErrorCode.RESULT_OK);
+                                    content = fs.readFileSync(content);
                                 }
+
+                                let thisModule = {};
+                                thisModule.info = moduleInfo;
+                                let scriptContent = "(function(_owp_,module) {let getCurrentPackage=function(){return _owp_;}; \n" + content +"\n})(thisPackage,thisModule);";
+
+                                let funcResult = eval(scriptContent);
+                                if(funcResult) {
+                                    thisModule.exports = funcResult;
+                                }
+                                moduleInfo.loadedModule = thisModule.exports;
+                                onComplete(thisModule.exports,ErrorCode.RESULT_OK);
+
 
                             } else {
                                 onComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
@@ -1434,7 +1489,22 @@ class RuntimeInstance {
 
                         tryLoad(pos+1);
                     } else {
-                        var xarConfig = JSON.parse(resp.content);
+                        let content = resp.content;
+                        if (content==void 0) {
+                            onComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
+                            return;
+                        }
+
+                        let configText = content;
+                        if(resp.type=='file'){
+                            if(!BaseLib.fileExistsSync(content)){
+                                onComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
+                                return;
+                            }
+                            configText = fs.readFileSync(content);
+                        }
+
+                        var xarConfig = JSON.parse(configText);
                         xarConfig.baseURL = repositoryHost;
                         if(xarConfig.knowledges) {
                             for (let i = 0; i < xarConfig.knowledges.length; ++i) {
@@ -1463,12 +1533,21 @@ class RuntimeInstance {
                                         } else {
                                             let content = resp.content;
                                             if(content) {
+                                                if(resp.type=='file'){
+                                                    if(!BaseLib.fileExistsSync(content)){
+                                                        onComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
+                                                    }else{
+                                                        content = fs.readFileSync(content);
+                                                    }
+                                                }
+
                                                 let scriptContent = "(function(_owp_) {let getCurrentPackage=function(){return _owp_;}; \n" + content +"\n})(xarConfig);";
 
                                                 let funcResult = eval(scriptContent);
                                                 BX_LOG("load package " + xarInfo + " ok.");
                                                 xarPackage.state = xarPackage.XAR_STATE_LOADED;
                                                 onComplete(xarPackage, funcResult);
+
                                             } else {
                                                 onComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
                                             }

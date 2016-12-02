@@ -16,17 +16,17 @@
 
 #### + BX_LOG(string info,int level,traceid)
 输出一行日志，内容为info,级别为一下可选值
->var BX_LOG_LEVEL_ERROR = 50;
->var BX_LOG_LEVEL_WARN  = 40;
->var BX_LOG_LEVEL_INFO  = 30;
->var BX_LOG_LEVEL_DEBUG = 20;
+>var BX_LOG_LEVEL_ERROR = 50;  
+>var BX_LOG_LEVEL_WARN  = 40;  
+>var BX_LOG_LEVEL_INFO  = 30;  
+>var BX_LOG_LEVEL_DEBUG = 20;  
+
 通过调整当前的日志级别，可以让低于日志级别的日志不显示。
-`以上日志是传统的本地日志，Bucky还有更适合分布式系统调试使用的统一日志收集系统`  
+`以上日志实现内测阶段使用传统的本地日志，未来会使用更适合分布式系统调试使用的统一日志收集系统`  
 BX_INFO,BX_ERROR,BX_DEBUG,BX_WARN 是相应级别的便捷函数。
 
 ### - void setCurrentApp(Application)  
 这是一个私有接口，正常应用逻辑开发不应该手工初始化 Application对象。  
-
 
 ##Application  
 Application对象，用来得到当前运行的分布式应用的信息  
@@ -78,33 +78,36 @@ RuntimeInstance代表的是当前代码的运行环境。一般通过全局函�
 
 ### + RuntimeStorage RuntimeInstance.getRuntimeStorage(string globalPath)  
 Application所要永久保存的数据，最后一定会在某些Runtime上落地。当应用代码在这些有数据的Runtime上运行时，就能通过RuntimeStorage得到保存的数据。  
-如果Runtime并不持有这些数据，那么该函数返回null。  
-#### `globalPath` 表示数据所在的全局目录路径
-想象Application把数据保存在一个全局磁盘上，那么很自然的就会对数据分目录放，这些目录就通过globalPath来表达。
-如果应用比较简单，可以把数据全部保存在"/"分区下。
+如果Runtime并不持有这些数据，那么该函数返回null。   
+#### `globalPath` 表示数据所在的全局目录路径  
+想象Application把数据保存在一个全局磁盘上，那么很自然的就会对数据分目录放，这些目录就通过globalPath来表达。  
+如果应用比较简单，可以把数据全部保存在"/"分区下。  
 
 ### + LocalStorage RuntimeInstance.getLocalStorage()
 `未实现` 返回当前Runtime持有的本地存储管理器。
 
 ### + RuntimeCache RuntimeInstance.getRuntimeCache()
-`未实现` 返回当前Runtime持有的内存Cache管理器。
+`未实现` 返回当前Runtime持有的内存Cache管理器。 
 
 ### + RuntimeInfo RuntimeInstance.createRuntimeInfo()
-返回与指代RuntimeInstance的一个RuntimeInfo. 
+返回与指代RuntimeInstance的一个RuntimeInfo.   
 
 ### + KnowledgeManager RuntimeInstance.getKnowledgeManager()
-返回当前的Runtime所使用的KnowledegeManager对象。这是应用开发得到KnowledgeManager对象的主要方法。
+返回当前的Runtime所使用的KnowledegeManager对象。这是应用开发得到KnowledgeManager对象的主要方法。  
 
 ### + Driver RuntimeInstance.getDriver(string driverID)
-得到一个驱动。驱动能否获取成功取决于当前Runtime所在的设备。
-驱动通常能提供一些功能，用于与旧世界打交道。应用开发应该尽量避免使用驱动。
-目前实现的驱动：(`小应用暂未开放加载驱动`)
-bx.mysql.client
-bx.mysql.redis
+得到一个驱动。驱动能否获取成功取决于当前Runtime所在的设备。  
+驱动通常能提供一些功能，用于与旧世界打交道。应用开发应该尽量避免使用驱动。  
+目前实现的驱动：(`小应用暂未开放加载驱动`)  
++ bx.mysql.client  
++ bx.mysql.redis  
 
 ### + void RuntimeInstance.loadXARPackage(xarInfo xarID,function onComplete)
+核心函数,用于加载一个指定的package
 
 ### + XARPackage RuntimeInstance.getLoadedXARPackage(xarInfo xarID)
+返回当前RuntimeInstance已经加载成功的一个Package。  
+这是一个同步函数。 
 
 ### + RuntimeInfo RuntimeInstance.getRuntimeInfo(runtimeID) 
 通过runtimeID获得其RuntimeInfo。
@@ -113,10 +116,15 @@ bx.mysql.redis
 proxy会使用的核心函数，为一个操作选择一个合适的runtime
 
 ### + RuntimeInstance.callFunc(functionName,args,selectKey,traceID,onComplete)
+通过functionName发起一次调用。  
+functionName的定义参考BaseLib.parseFunctionName  
+这个函数常用于自己编写proxy package的使用，一般应用开发并不需要手工调用该函数。 
 
-### + RuntimeInstance.postRPCCalll(remoteRuntimeInfo,functionname,args,traceID,onComplete)
+### - RuntimeInstance.postRPCCalll(remoteRuntimeInfo,functionname,args,traceID,onComplete)
+私有函数，发起一次RPC。
 
 ### - void RuntimeInstance.loadLocalXarPackage(xarInfo xarID,function onComplete)
+私有函数，用于在微信小程序环境中加载本地XARPackage。
 
 ### - bool RuntimeInstance.isXARPackageCanLoad(packageInfo,string instanceID) 
 判断当前Runtime是否允许`直接加载`目标XAR包。如果不允许，那么当前Runtime在加载目标XAR包时，会加载该XAR的proxy包
@@ -203,51 +211,75 @@ RuntimeStorage使用K-V设计来保存结构化数据。
 ##RuntimeCache
 `内测版暂未开放`
 
-
-
 ## ErrorCode
-### `ErrorCode.RESULT_OK` : 
-### `ErrorCode.RESULT_TIMEOUT` :
-### `ErrorCode.RESULT_WAIT_INIT` : 2;
-### `ErrorCode.RESULT_ERROR_STATE` : 3;
-### `ErrorCode.RESULT_NOT_FOUND` : 4;
-### `ErrorCode.RESULT_SCRIPT_ERROR` : 5;
-### `ErrorCode.RESULT_NO_IMP` : 6;
-### `ErrorCode.RESULT_ALREADY_EXIST` : 7;
-### `ErrorCode.RESULT_UNKNOWN` : 8;
+Bukcy使用一些通用的错误代码（还会持续增加）来表示API的结果。
+
++ `ErrorCode.RESULT_OK` : 0  表示成功
++ `ErrorCode.RESULT_TIMEOUT` : 操作超时失败
++ `ErrorCode.RESULT_WAIT_INIT` : 2 操作失败，需要等待初始化成功
++ `ErrorCode.RESULT_ERROR_STATE` : 3 操作失败，处于错误的状态
++ `ErrorCode.RESULT_NOT_FOUND` : 4 操作失败，对象未找到   
++ `ErrorCode.RESULT_SCRIPT_ERROR` : 5 操作失败，脚本错误  
++ `ErrorCode.RESULT_NO_IMP` : 6 操作失败，该功能未实现  
++ `ErrorCode.RESULT_ALREADY_EXIST` : 7 操作失败，对象已存在  
++ `ErrorCode.RESULT_UNKNOWN` : 8 操作失败，未知错误
 
 ## KnowledgeManager
+知识管理器是Bucky的一个关键设计，用于管理／同步 分布式系统里的一些关键的全局状态。   
+在开发者看来，可以把KnowledgeManager想象成一个全局变量管理器（读多写少，但写有强一致性保证）  
+提供必要的并行同步设施。  
+内测阶段请简单实用KnowledgeManager,我们以后会有更详细的文档来更全面的介绍该设施
 
 ### InfoNode
+KnowledgeManager通过Key返回的一个指定的全局状态对象。为了方便应用开发，读操作被设计为同步的。
+目前只支持两种数据类型，不同的数据类型有不同粒度的操作函数。 
++ Object
++ Map 
 
 #### + int InfoNode.getType()
+获得该全局对象的类型。
 
 #### + int InfoNode.getState()
+获得该全局对象当前的状态，正常使用下能拿到的InfoNode的状态都是STATE_READY
 
 #### + Object InfoNode.objectRead()
+如果该状态的类型是Object,那么返回该Object
 
 #### + void InfoNode.objectUpdate(Object newObj,function onComplete)
+如果该状态的类型是Object，那么异步更新该全局状态。
+`内测版未支持`  
 
 #### + Object InfoNode.mapGet(string key)
+如果该状态的类型是Map,那么返回key对应的value对象。  
 
 #### + void InfoNode.mapSet(string key,Object objItem,function onComplete)
+如果该状态的类型是Map，那么异步更新设置key对应的value对象为objItem。 更新结果通过onComplete返回。
+`内测版未支持`  
 
 #### + void InfoNode.mapGetClone()
+如果该状态的类型是Map，那么返回整个map（通常用于便利)  
 
 ### + InfoNode KnowledgeManager.getKnowledge(string key)
+核心函数，通过key返回一个全局状态对象。该函数是同步的。
+该key必需通过KnowledgeManager.dependKnowledge事先要求依赖了。
 
 ### + void KnowledgeManager.dependKnowledge(string key,Object options)
+核心函数，Runtime要求依赖key指定的全局状态。  
 
 ### + void KnowledgeManager.ready(function onReady)
+核心函数，调用后当前所有依赖的全局状态如果都已同步完成，会触发onReady通知。
 
 ### + int KnowledgeManager.getState()
+返回当前KnowledgeManager的状态。一般不需要调用函数。  
 
 ### - string KnowledgeManager.getInfoURL(string key)
+私有函数  
 
 ### - void KnowledgeManager.addknowledgeKey(string key,InfoNode aNode)
+私有函数  
 
 ### - void KnowledgeManager.removeknowledgeKey(string key)
-
+私有函数   
 
 ##BaseLib
 BaseLib定义了大量的功能性静态函数。
@@ -270,64 +302,106 @@ BaseLib定义了大量的功能性静态函数。
 非常有用的小函数，特别是用在处理某些事件的时候。
 
 ### + string BaseLib.hash(string method,string content,string format)  
+通用hash函数，对content做method指定的hash算法，并把结果按format指定的格式返回  
+目前method只支持md5  
+format只支持  
 
 ### + string BaseLib.md5(string content,string format)
+相当于调用 
+>BaseLib.hash("md5",content,format)
 
 ### + int BaseLib.getRandomNum(min,max)
+返回[min,max)之间的一个随机正数。  
 
 ### + string BaseLib.createGUID()
+创建一个GUID String。 
 
-### + bool BaseLib.isArrayContained(Array a,Array b)
+### + bool BaseLib.isArrayContained(StringArray a,StringArray b)
+判断一个字符串数组a是否被另一个字符串数组b包含。  
 
 ### + int BaseLib.inet_aton(string IP)
+将一个"10.10.10.1"这样的字符串转换为32位整数  
 
 ### + string BaseLib.inet_ntoa(int num)
+将一个32位整数转化为"10.10.10.1"这样的IP String  
 
 ### + FunctionInfo BaseLib.parseFunctionName(string functionName)
+解析一个符合Bukcy定义的FunctionName.FunctionName看起来如下 $xarPackageID:$moudeID::$funcName@$runtimeInstanceID  
+返回一个对象
+```
+{
+  "packageInfo":"",
+  "moduleID":"",
+  "functionID":"",
+  "instanceID":""
+}
+```
 
 ### + void BaseLib.loadFileFromURL(string fileURL,function onComplete)
+从一个URL使用HTTP GET方法异步加载文件，结果通过onComplete回调返回。  
 
 ### + void BaseLib.loadJSONFromURL(string fileURL,function onComplete)
+从一个URL使用HTTP GET方法异步加载文件，并假设该文件的内容是一个JOSN.把解析的结果通过onComplete回调返回。  
 
 ### + void BaseLib.postJSON(string postURL,Object postBody,function onComplete)
+往postURL使用HTTP POST方法发送一个用json编码的postBody,通过onComplete返回服务器的结果。  
 
 ### + void BaseLib.postData(string postURL,string postBody,function onComplete)
+往postURL使用HTTP POST方法发送一个postBody,通过onComplete返回服务器的结果。    
 
 ### - void BaseLib.runScriptFromURL(string fileURL,function onComplete)
+私有函数
 
 ### - void BaseLib.wxHttpRequest()
+私有函数，用于兼容微信小程序的HttpRequest
 
 ### - void BaseLib.postJSONCall(string postURL,Object postBody,function onComplete)
+私有函数
 
 ### - table BaseLib.readCookie()
+私有函数
 
 ### - string BaseLib.writeCookie()
+私有函数
 
 ### - Object BaseLib.encodeParamAsJson(Object args) 
+私有函数
 
 ### - Object BaseLib.decodeResultFromJSON(Object jsonBody)
+私有函数
 
 ### - BaseLib.fsExistsSync()
+私有函数
 
 ### - BaseLib.fileExistsSync()
+私有函数
 
 ### - BaseLib.dirExistsSync()
+私有函数
 
 ### - BaseLib.mkdirsSync()
+私有函数
 
 ### - BaseLib.deleteFolderRecursive()
+私有函数
 
 ### - BaseLib.findSync()
+私有函数
 
 ### - BaseLib.findOnceSync()
+私有函数
 
 ### - BaseLib.findOutDir()
+私有函数
 
 ### - BaseLib.findFiles()
+私有函数
 
 ### - BaseLib.writeFileTo()
+私有函数
 
 ### - BaseLib.writeFileToAsync()
+私有函数
 
 
 ## Device
@@ -336,46 +410,68 @@ BaseLib定义了大量的功能性静态函数。
 ### DeviceInfo 对象
 代表系统中的一个可计算设备（不一定是当前的可计算设备）
 当应用系统
-#### `DeviceID`
-#### `Type`
-#### `IsOnline`
-#### `Ability`
-#### `Drivers`
+#### `DeviceID` : 设备的唯一ID
+#### `Type` : 设备的类型。目前有以下可用值  
++ "*"  可模拟任意设备（只有本地调试模式会使用）  
++ pc_server 后台服务器  
++ wx_client 微信小程序客户端  
++ browser_client 浏览器客户端  
+#### `IsOnline` : 设备是否在线  
+#### `Ability` : 设备的能力列表 `目前小应用云所有的设备都支持 wlan-interface,storage`
+#### `Drivers` : 设备支持的驱动列表 `目前小应用云未提供任何驱动`
 
 ### + string Device.getDeviceID()
+得到设备的ID   
 
 ### + Array Device.getAbility()
+得到设备的能力列表 `目前小应用云所有的设备都支持 wlan-interface,storage`   
 
 ### + string Device.getDeviceType()
+得到设备的类型。目前有以下可用值    
++ "*"  可模拟任意设备（只有本地调试模式会使用）  
++ pc_server 后台服务器  
++ wx_client 微信小程序客户端  
++ browser_client 浏览器客户端  
 
-### + bool Device.isDriverInstalled()
+### + bool Device.isDriverInstalled(string driverID)
+查询是否支持某个指定的驱动  
 
 ### + DeviceInfo Device.createDeviceInfo()
+创建代表当前设备的DeviceInfo对象  
 
 ### - Device.getAppHost()
+私有函数
 
 ### - Device.getAppRepositoryHost()
+私有函数
 
 ### - Device.getOwnerAppHost()
+私有函数
 
 ### - Device.getInterfaceURL()
+私有函数
 
 ### - Device.getOwnerUserID()
+私有函数
 
 ### - Device.getOwnerUserToken()
+私有函数
 
 ### - Device.setOwnerUserID()
+私有函数
 
 ### - Device.getRuntimeRootDir()
+私有函数
 
 ### - Device.getInstalledDrivers()
+私有函数
 
 ### - Device.loadFromConfig()
-
+私有函数
 
 ## GlobalEventManager
 依赖Knowledge作为底层系统实现的全局事件系统。
-`内测版暂为提供该模块`
+`内测版未提供该模块`
 
 
 

@@ -7,12 +7,13 @@
 # 准备工作
 ## 获取bucky_sdk
 从 https://github.com/buckyos/bucky_sdk 下载`小应用云`sdk。SDK包含以下文件：
+
 几种工具：
 + tools.js -- 发布，停止，开始app的工具
 + proxytools.js -- 生成proxy包的工具
 + node_loader.js -- nodejs环境下的启动工具
 + make_wx_demo.js -- 生成微信小程序下可使用的demo
-+ clean_local.js -- 清楚本地调试后产生的临时文件
++ clean_local.js -- 清除本地调试后产生的临时文件
 
 几类在不同环境使用的core文件：
 + wx_core.js -- 微信小程序环境
@@ -111,6 +112,7 @@ var KnowledgeManager = _core.KnowledgeManager;
 微信小程序的环境比较特殊，我们需要将app的配置以及所有需要跑在本地的包配置，放在小程序可以看到的地方。一般情况下，这些信息会配置在pages的data字段。包的配置信息包含在每个包目录下的config.json文件中。而app的信息包含在account/app.json中。knowledge不需配置在本地，是跑在后端的。
 
 为了方便，我们的特化脚本会将这些信息生成一个文件，demos/wx_config.json，需要自行粘贴到index.js中的相应位置，完成后的index.js代码如下：
+
 ![](index.js.png)
 
 至此，小程序的配置完毕。在小程序工具中创建一个项目，项目目录指定为bucky_sdk/demos/wx。然后点击头像，即可开始登录测试流程。不过在运行之前，请保证我们的域名 (https://weixin.xmaose.com) 已经配置在您微信小程序的设置中：
