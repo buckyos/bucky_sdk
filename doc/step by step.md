@@ -87,7 +87,7 @@ node ./demos/make_wx_demo.js
 ```
 
 它主要做了如下工作：将微信小程序使用的core模块（wx_core.js）放在小程序目录中。例子中我们放在与pages平级的bucky目录下，同时将需要在本地加载的包放入同一目录中，包的路径为/bucky/packages，本地需要使用的包为client和userinfo_proxy。另外，模块代码也针对微信小程序有修改，在/bucky/packages下面的client.js和userinfo.js前面都会添加一段代码：
-```
+```javascript
 "use strict";  
 var _core = require("../../wx_core.js");  
 var BaseLib = _core.BaseLib;  
@@ -155,7 +155,7 @@ node node_loader.js -main ./demos/account/nodeclient.js -app ./demos/account/app
 
 #总结
 account实现的是一个非常简单的用户管理服务，服务的核心代码只有下面这么多：
-```
+```javascript
 function Login(username,md5Pwd,onComplete) {  
     let thisRuntime = getCurrentRuntime();  
     let rs = thisRuntime.getRuntimeStorage("/users/");  

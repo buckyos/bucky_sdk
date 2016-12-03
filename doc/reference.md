@@ -35,7 +35,7 @@ Application对象，用来得到当前运行的分布式应用的信息
 异步初始化Application对象。Application对象会从core service中读取必要的信息，所以这个操作时异步的。  
 #### 参数列表  
 #### `appInfo`：一般从app.json读取，内容如下：  
-```
+```javascript
 {  
   "appID" : "bx.demos.account",  
   "appHost" : "https://weixin.xmaose.com/apphost/",  
@@ -328,7 +328,7 @@ format只支持
 ### + FunctionInfo BaseLib.parseFunctionName(string functionName)
 解析一个符合Bukcy定义的FunctionName.FunctionName看起来如下 $xarPackageID:$moudeID::$funcName@$runtimeInstanceID  
 返回一个对象
-```
+```javascript
 {
   "packageInfo":"",
   "moduleID":"",

@@ -7,7 +7,7 @@
 ### app.json
 目前app.json的内容非常简单，内容如下
 
-```
+```json
 {
   "appID" : "bx.demos.account",
   "appHost" : "https://weixin.xmaose.com/apphost/",
@@ -36,7 +36,7 @@ XARPackage的结构如下
 
 ### config.json
 一个典型的config.json的格式如下
-```
+```json
 {
 	"packageID" : "userinfo",
 	"version" : "1.0.0.0",
@@ -58,21 +58,21 @@ XARPackage的结构如下
 }
 ```
 
-packageID:关键字段 需要与代码当前的目录名相同
-version:友好版本，给人看的，并无实际功能
-build:关键字段 当不指定版本号去加载package的时候，系统会加载该package的默认版本（通常是最大的build号的包)，在某些场合也可以指定depend package的最小build版本。随着package里内容的更新，build号应该越来越大。
-meta:是描述信息，纯粹用于展示
-depends:关键字段 是该package的依赖package.意味着当该package加载完成后，其所依赖的package也必须都加载完成
-modules:关键字段 定义了package内部的模块与实现代码的关系，这个表以后可以使用tools.js来自动生成
-deviceType:关键字段 定义了package允许在什么类型的设备上加载。允许在所有设备上加载填写`*`,目前支持以下这些设备类型`[pc_client,wx_client,h5_client,pc_server]`
-derviers:关键字段 定义了package依赖的驱动（后面会介绍driver的概念）
-storages:关键字段 定义了package依赖的系统状态存储分区 (后面会介绍storage的概念)
-knowledges:关键字段 定义了package依赖的knowledges(后面会介绍knowledge的概念)，package加载成功时，会完成其依赖knowledges的同步
+- packageID:关键字段 需要与代码当前的目录名相同
+- version:友好版本，给人看的，并无实际功能
+- build:关键字段 当不指定版本号去加载package的时候，系统会加载该package的默认版本（通常是最大的build号的包)，在某些场合也可以指定depend package的最小build版本。随着package里内容的更新，build号应该越来越大。
+- meta:是描述信息，纯粹用于展示
+- depends:关键字段 是该package的依赖package.意味着当该package加载完成后，其所依赖的package也必须都加载完成
+- modules:关键字段 定义了package内部的模块与实现代码的关系，这个表以后可以使用tools.js来自动生成
+- deviceType:关键字段 定义了package允许在什么类型的设备上加载。允许在所有设备上加载填写`*`,目前支持以下这些设备类型`[pc_client,wx_client,h5_client,pc_server]`
+- derviers:关键字段 定义了package依赖的驱动（后面会介绍driver的概念）
+- storages:关键字段 定义了package依赖的系统状态存储分区 (后面会介绍storage的概念)
+- knowledges:关键字段 定义了package依赖的knowledges(后面会介绍knowledge的概念)，package加载成功时，会完成其依赖knowledges的同步
 简单的说，这个config包含了两部分信息，“package是什么”，以及“package依赖什么”。系统会根据"package依赖什么"的信息，做自动调度。
 
 ### module
 一个典型的module的代码如下，基本上和nodejs的module写法一致
-```
+```javascript
 "use strict";
 function md5(str,onComplete) {
     console.log("md5:" + str);
@@ -104,7 +104,7 @@ Runtime从物理上很像一个虚拟机，由自己独立的沙盒环境（包�
 
 ### 加载XARPackage的流程简介
 Runtime最重要的功能就是加载并运行代码，这段代码写起来如下：
-```
+```javascript
 getCurrentRuntime().loadXARPackage("packageA",function(thePackage) {
     thePackage.loadModule("moduleA",function (moduleA,errorCode) {
          moduleA.md5("test", function (result, errorCode) {
@@ -145,7 +145,7 @@ bx.redis.client
 当Runtime试图加载一个XARPackage时，系统会判断该Package是否适合加载在当前Runtime,如果不适合，那么机会尝试寻找一个已经加载了该XARPackage的Runtime(或则创建一个)。而在当前Runtime里加载的，则是一个Proxy Package.
 Proxy Package实现了原始Package中的所有模块和接口，目前这些接口的实现都非常简单：
 
-```
+```javascript
 let thisRutnime = getCurrentRuntime();
 let rpc_args = arguments;
 thisRutnime.selectTargetRuntime("userinfo",username,function(targetRuntime) {
@@ -162,7 +162,7 @@ Knowledges是应用开发过程中需要经常打交道的一个核心概念，�
 
 Knowledge采用key-value设计，一个典型的使用Knowledge的代码如下
 
-```
+```javascript
 let km = getCurrentRuntime().getKnowledgeManager();
 km.dependKnowledge("myconfig");
 	km.ready(function(){
@@ -182,7 +182,7 @@ Knowledges机制的核心是 更新->同步。简单使用只需要掌握同步�
 Bucky里的状态存储需求分为两大类，一类是整个系统存储的状态，称作Storages.另一类是某个runtime运行中需要存储的状态，称作Local storage（内测版还未开放接口）。
 整个系统需要存储的状态，可以理解为一堆存放在不同目录的“对象”，目录格式类似于 `/` ,`/data/` 这种形式。具体的使用接口有点类似html5的local storage的设计，实例代码如下:
 
-```
+```javascript
 let rs = thisRuntime.getRuntimeStorage("/users/");
 let uobj = {"id":"admin","password":"123123123","desc":"admin user"};
 
