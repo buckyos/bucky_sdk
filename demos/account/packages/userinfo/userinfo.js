@@ -12,7 +12,9 @@ function Login(username,md5Pwd,onComplete) {
     let rs = thisRuntime.getRuntimeStorage("/users/");
 
     rs.getObject("user." + username,function(objid,usrObj) {
+        logger.info("!!!!usrObj:",usrObj);
         if(usrObj) {
+            logger.info("!!!!md5Pwd:",md5Pwd);
             if(usrObj.password == md5Pwd) {
                 onComplete(0);
             } else {
@@ -40,12 +42,12 @@ function Register(username,md5pwd,desc,onComplete) {
 
     rs.isObjectExists(objid,function(objid,isExists) {
         if(isExists) {
-            logger.info("user is exists");
+            logger.info("!!!user is exists");
             onComplete(1);
         } else {
-            logger.info("user not register,will add user");
+            logger.info("!!!user not register,will add user");
             rs.setObject(objid,uobj,function(){
-                logger.info("user register ok");
+                logger.info("!!!user register ok");
                 onComplete(0);
             });
         }

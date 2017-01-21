@@ -24,10 +24,7 @@ Page({
     appendLog("\r\nuserID:"+thisDevice.getOwnerUserID());
 
     let km = thisRuntime.getKnowledgeManager();
-    km.dependKnowledge("global.events");
-    km.dependKnowledge("global.runtimes");
-    km.dependKnowledge("global.devices");
-    km.dependKnowledge("global.storages");
+
     km.ready(function() {
       thisRuntime.loadXARPackage("client",function(thePackage) {
         if(thePackage) {

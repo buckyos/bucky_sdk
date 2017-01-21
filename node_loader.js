@@ -49,7 +49,7 @@ if(enableLocalDebug) {
     var core = require("./local_core.js");
     var BaseLib = core.BaseLib;
     var ErrorCode =core.ErrorCode;
-    var BX_LOG = core.BX_LOG;
+    var LOG_INFO = core.LOG_INFO;
     var BX_CHECK = core.BX_CHECK;
     var Application = core.Application;
     var getCurrentRuntime = core.getCurrentRuntime;
@@ -60,16 +60,18 @@ if(enableLocalDebug) {
     var OwnerUser = core.OwnerUser;
     var GlobalEventManager = core.GlobalEventManager;
     var initCurrentRuntime = core.initCurrentRuntime;
+    var InfoNode = core.InfoNode;
+    var KnowledgeManager = core.KnowledgeManager;
 
     if(modulesPath==null){
         modulesPath = __dirname+PATH_SEPARATOR+"bucky_modules";
     }
-    core.Repository.setModulesPath(modulesPath);
+    core.Repository.init(modulesPath);
 } else {
     var core = require("./node_core.js");
     var BaseLib = core.BaseLib;
     var ErrorCode =core.ErrorCode;
-    var BX_LOG = core.BX_LOG;
+    var LOG_INFO = core.LOG_INFO;
     var BX_CHECK = core.BX_CHECK;
     var Application = core.Application;
     var getCurrentRuntime = core.getCurrentRuntime;
@@ -79,6 +81,8 @@ if(enableLocalDebug) {
     var Device = core.Device;
     var OwnerUser = core.OwnerUser;
     var GlobalEventManager = core.GlobalEventManager;
+    var InfoNode = core.InfoNode;
+    var KnowledgeManager = core.KnowledgeManager;
 }
 
 if(mainjs == null) {

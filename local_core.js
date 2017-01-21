@@ -13,11 +13,7 @@ var XMLHttpRequest = require("xmlhttprequest").XMLHttpRequest;
 var url = require('url');
 var fs = require('fs');
 var path = require('path');
-
-
-
-
-
+var assert = require('assert');
 var AdmZip = require('adm-zip');
 var child_process = require("child_process");
 var crypto = require('crypto')
@@ -32,41 +28,97 @@ var PATH_SEPARATOR = path.normalize("/");
 var EVAL_ENABLE = true
 
 
-var BX_LOG_LEVEL_ERROR = 50;
-var BX_LOG_LEVEL_WARN = 40;
-var BX_LOG_LEVEL_INFO = 30;
-var BX_LOG_LEVEL_DEBUG = 20;
+const LOG_LEVEL_ALL = 0;
+const LOG_LEVEL_TRACE = 1;
+const LOG_LEVEL_DEBUG = 2;
+const LOG_LEVEL_INFO = 3;
+const LOG_LEVEL_WARN = 4;
+const LOG_LEVEL_ERROR = 5;
+const LOG_LEVEL_FATAL = 6;
+const LOG_LEVEL_OFF = 7;
 
-function BX_LOG(loginfo,level,traceid) {
-    return BaseLib.log(loginfo,level,traceid);
-}
 
-function BX_INFO(loginfo,traceid) {
-    return BX_LOG(loginfo, BX_LOG_LEVEL_INFO,traceid);
-}
+var BX_UID_TYPE_CORE = "CORE";
+var BX_UID_TYPE_APP = "APP";
+var BX_UID_TYPE_DEVELOPER = "DEV";
+var BX_UID_TYPE_RUNTIME = "RTM";
 
-function BX_ERROR(loginfo,traceid) {
-    return BX_LOG(loginfo, BX_LOG_LEVEL_ERROR,traceid);
-}
 
-function BX_DEBUG(loginfo,traceid) {
-    return BX_LOG(loginfo, BX_LOG_LEVEL_DEBUG,traceid);
-}
 
-function BX_WARN(loginfo,traceid) {
-    return BX_LOG(loginfo, BX_LOG_LEVEL_WARN,traceid);
-}
+var BX_RUNTIME_LEVEL = 4;
 
+
+function assert(val) {}
 function BX_CHECK(cond) {
     return;
 }
 
+var log_level = LOG_LEVEL_ALL;
+
+function BX_SetLogLevel(level) {
+    log_level = level;
+
+
+
+}
+
+function BX_LOGIMPL(level, levelname, logs) {
+    if (level >= log_level) {
+        var args = [].slice.call(logs, 0);
+        args.unshift('['+levelname+']');
+        console.log.apply({}, args)
+    }
+}
+
+function BX_LOG() {
+
+
+
+    BX_LOGIMPL(LOG_LEVEL_INFO, 'INFO', arguments);
+
+}
+
+function BX_DEBUG() {
+
+
+
+    BX_LOGIMPL(LOG_LEVEL_DEBUG, 'DEBUG', arguments);
+
+}
+
+function BX_TRACE() {
+
+
+
+    BX_LOGIMPL(LOG_LEVEL_TRACE, 'TRACE', arguments);
+
+}
+
+function BX_INFO() {
+
+
+
+    BX_LOGIMPL(LOG_LEVEL_INFO, 'INGO', arguments);
+
+}
+
+function BX_WARN() {
+
+
+
+    BX_LOGIMPL(LOG_LEVEL_WARN, 'WARN', arguments);
+
+}
+
+function BX_ERROR() {
+
+
+
+    BX_LOGIMPL(LOG_LEVEL_ERROR, 'ERROR', arguments);
+
+}
 
 class BaseLib {
-    static log(loginfo,level,traceid) {
-        console.log(loginfo);
-    }
-
     static setTimer(func,timeout) {
 
         return setInterval(func,timeout);
@@ -82,6 +134,10 @@ class BaseLib {
 
     static asynCall(func) {
         setTimeout(func,0);
+    }
+
+    static getNow() {
+        return new Date().getTime();
     }
 
 
@@ -152,6 +208,15 @@ class BaseLib {
       return BaseLib.hash('md5', s, format);
     };
 
+    static privateEncrypt( private_key, text) {
+        return crypto.privateEncrypt(private_key, Buffer.from(text))
+            .toString('base64');
+    }
+
+    static publicDecrypt( public_key, ciphertext) {
+        return crypto.publicDecrypt(public_key, Buffer.from(ciphertext, 'base64'))
+            .toString();
+    }
 
 
     static loadFileFromURL(fileURL,onComplete) {
@@ -170,7 +235,7 @@ class BaseLib {
                     }
                 }
                 else{
-                    BX_LOG("load err: "+responseText);
+                    BX_WARN("load err: "+responseText);
                     if(onComplete) {
                         onComplete(null, request.status);
                     }
@@ -191,7 +256,7 @@ class BaseLib {
                 let jsonResult = JSON.parse(content);
                 onComplete(jsonResult,errorCode);
             } else {
-                BX_LOG("loadJSONFrom:" + jsonURL + " error:" + errorCode);
+                BX_INFO("loadJSONFrom:" + jsonURL + " error:" + errorCode);
                 onComplete(null,errorCode);
             }
         };
@@ -469,6 +534,15 @@ class BaseLib {
 
 
 
+    static inArray(arr, obj) {
+        var i = arr.length;
+        while (i--) {
+            if (arr[i] === obj) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     static isArrayContained(a, b){
         if(!(a instanceof Array) || !(b instanceof Array))
@@ -495,14 +569,28 @@ class BaseLib {
     }
     static postJSON(postURL,postBody,onComplete) {
         let strPostBody = JSON.stringify(postBody);
-        BaseLib.postData(postURL,strPostBody,function(strResp, status) {
+        BaseLib.postData(postURL,strPostBody,function(strResp, status, errCode) {
             let jsonResp = null;
             if (strResp) {
                 jsonResp = JSON.parse(strResp);
             }
 
-            onComplete(jsonResp, status);
+            onComplete(jsonResp, status, errCode);
         });
+    }
+
+
+
+    static postJSONEx(postURL,postBody,onComplete) {
+        let strPostBody = JSON.stringify(postBody);
+        let header = {"Content-Type":"application/json"};
+        BaseLib.postDataEx(postURL,header,strPostBody,function(strResp, status, errCode) {
+            onComplete(strResp, status, errCode);
+        });
+    }
+
+    static isJSONEmpty(jsonObj) {
+        return (Object.keys(jsonObj).length == 0);
     }
 
 
@@ -515,17 +603,71 @@ class BaseLib {
             if(xmlhttp.readyState == 4) {
                 if(xmlhttp.status == 200) {
                     let strResp= xmlhttp.responseText;
-                    onComplete(strResp, 200);
-                    return;
+                    onComplete(strResp, 200, ErrorCode.RESULT_OK);
                 } else {
-                    onComplete(null, xmlhttp.status);
+                    onComplete(null, xmlhttp.status, ErrorCode.RESULT_OK);
                 }
             }
+        };
+
+        xmlhttp.ontimeout = function (e) {
+            onComplete(null, -1, ErrorCode.RESULT_TIMEOUT);
         };
 
         xmlhttp.open("POST",postURL,true);
         xmlhttp.setRequestHeader("Content-Type","application/x-www-form-urlencoded");
         xmlhttp.send(postBody);
+
+    }
+
+
+
+    static postDataEx(postURL,headers,postBody,onComplete) {
+
+
+
+        let xmlhttp = new XMLHttpRequest();
+        xmlhttp.onreadystatechange = function() {
+            if(xmlhttp.readyState == 4) {
+                onComplete(xmlhttp.responseText, xmlhttp.status, ErrorCode.RESULT_OK);
+            }
+        };
+
+        xmlhttp.ontimeout = function (e) {
+            onComplete(null, -1, ErrorCode.RESULT_TIMEOUT);
+        };
+
+        xmlhttp.open("POST",postURL,true);
+        for (let key in headers) {
+            xmlhttp.setRequestHeader(key, headers[key]);
+        }
+        xmlhttp.send(postBody);
+
+    }
+
+
+    static getData(postURL,onComplete) {
+
+
+
+        let xmlhttp = new XMLHttpRequest();
+        xmlhttp.onreadystatechange = function() {
+            if(xmlhttp.readyState == 4) {
+                if(xmlhttp.status == 200) {
+                    onComplete(xmlhttp.responseText, 200, ErrorCode.RESULT_OK);
+                } else {
+                    onComplete(null, xmlhttp.status, ErrorCode.RESULT_OK);
+                }
+            }
+        };
+
+        xmlhttp.ontimeout = function (e) {
+            onComplete(null, -1, ErrorCode.RESULT_TIMEOUT);
+        };
+
+        xmlhttp.open("GET",postURL,true);
+        xmlhttp.setRequestHeader("Content-Type","application/x-www-form-urlencoded");
+        xmlhttp.send(null);
 
     }
 
@@ -536,11 +678,13 @@ class BaseLib {
             if(jsonResp) {
                 let result = BaseLib.decodeResultFromJSON(jsonResp);
 
-                if (result.seq == postBody.seq) {
+                if (result.seq == postBody.seq && result.errorCode == 0) {
                     onComplete(result.result);
+                } else {
+                    onComplete(null,result.errorCode,result);
                 }
             } else {
-                onComplete(null,resultCode);
+                onComplete(null,resultCode,null);
             }
         })
     }
@@ -572,22 +716,129 @@ class BaseLib {
         return (!str || /^\s*$/.test(str));
     }
 
+    static createUID(typeid,levelid,parentid=""){
+
+        let guid = BaseLib.createGUID();
+        return typeid+'@'+levelid+'@'+guid+'@'+parentid;
+    }
+
+    static decodeUID(uid){
+        let infos = uid.split('@');
+        return {typeid:infos[0],levelid:infos[1],guid:infos[2],parentid:infos[3]}
+    }
+
+    static getStack(callee) {
+        var old = Error.prepareStackTrace;
+        Error.prepareStackTrace = function (error, stack) {
+            return stack;
+        };
+
+        let err = new Error();
+        Error.captureStackTrace(err, callee);
+        var stack = err.stack;
+        Error.prepareStackTrace = old;
+
+        return stack;
+    }
+
+    static getPos(callee, frameIndex) {
+        let stack = BaseLib.getStack(callee);
+        let frame = stack[frameIndex];
+        let pos = {
+            "line": frame.getLineNumber(),
+            "file": frame.getFileName(),
+            "func": frame.getFunctionName(),
+        };
+        if (pos.file == undefined) {
+            pos.file = "undefined";
+        } else if (typeof(pos.file) == 'string') {
+            pos.file = path.basename(pos.file);
+        }
+
+        return pos;
+    }
+
+
+    static getUrlFromNodeInfo(nodeInfo) {
+
+        try {
+            if (!nodeInfo || !nodeInfo.category || !nodeInfo.id) {
+                BX_INFO("Get url from nodeInfo failed. nodeinfo:"+(nodeInfo ? JSON.stringify(nodeInfo) : "null"));
+                return null;
+            }
+
+
+
+
+
+
+
+            let schema = "http://";
+
+            if (nodeInfo.category == "bus") {
+                schema = "ws://";
+            }
+            let path = nodeInfo.category;
+            if (nodeInfo.category != "device" && nodeInfo.appid) {
+                path = nodeInfo.appid;
+            }
+            let domain = BaseLib.domianConfig[nodeInfo.category];
+            let address = schema+domain+"/"+path+"/"+nodeInfo.id;
+
+            if (nodeInfo.path) {
+                address += "/"+nodeInfo.path;
+            }
+            BX_INFO("Get url from nodeInfo:"+JSON.stringify(nodeInfo)+", address:"+address);
+            return address;
+
+        } catch(err) {
+            BX_INFO("Get url from nodeInfo:"+JSON.stringify(nodeInfo)+" failed. err:"+err);
+            return null;
+        }
+
+    }
+
+    static getNodeInfoFromUrl(url) {
+
+    }
 }
+BaseLib.domianConfig = {
+    "services" : "dev.tinyappcloud.com",
+    "device" : "dev.tinyappcloud.com",
+    "runtime" : "runtimes.tinyappcloud.com",
+    "bus" : "buses.tinyappcloud.com"
+}
+
 class ErrorCode {
     static getErrorDesc(errorCode) {
 
     }
 }
 
+
 ErrorCode.RESULT_OK = 0;
 ErrorCode.RESULT_TIMEOUT = 1;
 ErrorCode.RESULT_WAIT_INIT = 2;
 ErrorCode.RESULT_ERROR_STATE = 3;
-ErrorCode.RESULT_NOT_FOUND = 4;
+ErrorCode.RESULT_INVALID_TYPE = 4;
 ErrorCode.RESULT_SCRIPT_ERROR = 5;
 ErrorCode.RESULT_NO_IMP = 6;
 ErrorCode.RESULT_ALREADY_EXIST = 7;
-ErrorCode.RESULT_UNKNOWN = 8;
+ErrorCode.RESULT_NEED_SYNC = 8;
+ErrorCode.RESULT_NOT_FOUND = 9;
+ErrorCode.RESULT_EXPIRED = 10;
+
+ErrorCode.RESULT_UNKNOWN = 255;
+
+class NodeInfo {
+    constructor() {
+        this.id = ""
+        this.type = ""
+        this.interfaces = [];
+
+
+    }
+}
 class Application {
 
     constructor() {
@@ -598,18 +849,22 @@ class Application {
     }
 
     init(metaInfo,onInitComplete) {
-        BX_LOG("Application::init");
+        console.log("app metaInfo:", metaInfo);
+        BX_INFO("Application::init");
 
         if(this.state != Application.APP_STATE_UNKNOWN)
         {
-            BX_LOG("cann't init Application from other state");
+            BX_ERROR("cann't init Application from other state");
             return [ErrorCode.RESULT_ERROR_STATE,"error state"];
         }
         this.state = Application.APP_STATE_INITING;
         this.meta = metaInfo;
-        this.appID = metaInfo.appID;
+        this.appid = metaInfo.appid;
         this.appHost = metaInfo.appHost;
+        this.knowledgeHost = metaInfo.knowledgeHost;
+        this.schedulerHost = metaInfo.schedulerHost;
         this.repositoryList.push(metaInfo.repositoryHost);
+        this.logHost = metaInfo.logHost;
 
 
         onInitComplete(ErrorCode.RESULT_OK,this.meta);
@@ -617,11 +872,27 @@ class Application {
     }
 
     getID() {
-        return this.appID;
+        return this.appid;
     }
 
-    getHost() {
-        return this.appHost + "/" + this.appID + "/";
+
+
+
+
+    getKnowledgeHost() {
+        return this.knowledgeHost;
+    }
+
+    getLogHost() {
+        return this.logHost;
+    }
+
+    setLogHost() {
+        this.logHost;
+    }
+
+    getSchedulerHost(){
+        return this.schedulerHost;
     }
 }
 
@@ -646,37 +917,596 @@ function setCurrentApp(theApp) {
 function getCurrentApp() {
     return Application._currentApp;
 }
+"use strict";
+
+var KRESULT = {
+    "SUCCESS": 0,
+    "FAILED": 1,
+    "INVALID_PARAM": 2,
+    "NOT_FOUND": 3,
+    "INVALID_TYPE": 4,
+    "INVALID_TOKEN": 5,
+    "INVALID_SESSION": 6,
+    "INVALID_FORMAT": 7,
+    "INVALID_CMD": 8,
+    "TIMEOUT": 9,
+    "AUTH_FAILED": 10,
+    "UNMATCH_VERSION": 11,
+    "ALREADY_EXISTS": 12,
+    "NOT_EMPTY": 13,
+    "HIT_LIMIT": 14,
+    "PERMISSION_DENIED" : 15,
+}
+
+class KServerLimitsChecker {
+    static CheckKey(key) {
+        if (key.length > 1024) {
+
+        }
+    }
+}
+
+class KServerRequest {
+    constructor(appid, token, seq) {
+        this.m_appid = appid;
+        this.m_token = token;
+        this.m_seq = seq;
+
+        this.m_readList = [];
+        this.m_readListCB = [];
+
+        this.m_writeList = [];
+        this.m_writeListCB = [];
+
+        this.m_watchList = [];
+        this.m_watchListCB = [];
+    }
+
+    GetSeq() {
+        return this.m_seq;
+    }
+
+
+    CheckKey(key) {
+        return true;
+    }
+    CheckHashKey(hkey) {
+        return true;
+    }
+
+
+    GetValue(key, ver, OnResponse) {
+        const req = {
+            "type": "kvp",
+            "key": key,
+            "ver": ver
+        };
+
+        this.m_readList.push(req);
+        this.m_readListCB.push(function(resp) {
+
+            if (typeof resp != 'number') {
+                assert(resp.key === key);
+                OnResponse(resp.ret, resp.key, resp.value, resp.ver);
+            } else {
+                OnResponse(resp, key, null, ver);
+            }
+        });
+    }
+
+
+
+    GetHashValue(key, hkey, ver, OnResponse) {
+        const req = {
+            "type": "hash",
+            "key": key,
+            "ver": ver
+        };
+
+        if (hkey != null) {
+            req.hkey = hkey;
+        }
+
+        this.m_readList.push(req);
+        this.m_readListCB.push(function(resp) {
+
+            if (typeof resp != 'number') {
+                assert(resp.key === key);
+                OnResponse(resp.ret, resp.key, resp.hkey, resp.value, resp.ver);
+            } else {
+                OnResponse(resp, key, hkey, null, ver);
+            }
+        });
+    }
+
+
+
+    SetValue(key, value, ver, OnResponse) {
+        return this.SetValueEx(key, value, { "ver": ver }, OnResponse);
+    }
+
+
+
+
+
+
+
+    SetValueEx(key, value, options, OnResponse) {
+        const req = {
+            "type": "kvp",
+            "key": key,
+        };
+
+        if (value != null) {
+            req.value = value;
+        }
+        if (options.hasOwnProperty("ver")) {
+            req.ver = options.ver;
+        }
+        if (options.hasOwnProperty("mode")) {
+            req.mode = options.mode;
+        }
+
+        this.m_writeList.push(req);
+        this.m_writeListCB.push(function(resp) {
+            if (typeof resp != 'number') {
+                assert(resp.key === key);
+                OnResponse(resp.ret, resp.key, resp.ver);
+            } else {
+                OnResponse(resp, key, options.ver);
+            }
+        });
+    }
+
+
+
+
+    SetHashValue(key, hkey, value, ver, OnResponse) {
+        return this.SetHashValueEx(key, hkey, value, { "ver": ver }, OnResponse);
+    }
+
+    SetHashValueEx(key, hkey, value, options, OnResponse) {
+        const req = {
+            "type": "hash",
+            "key": key,
+        };
+
+        if (hkey != null) {
+            req.hkey = hkey;
+        }
+        if (value != null) {
+            req.value = value;
+        }
+
+        if (options.hasOwnProperty("ver")) {
+            req.ver = options.ver;
+        }
+        if (options.hasOwnProperty("mode")) {
+            req.mode = options.mode;
+        }
+
+        this.m_writeList.push(req);
+        this.m_writeListCB.push(function(resp) {
+
+
+            if (typeof resp != 'number') {
+                assert(resp.key === key);
+                OnResponse(resp.ret, resp.key, resp.hkey, resp.ver);
+            } else {
+                OnResponse(resp, key, hkey, options.ver);
+            }
+        });
+    }
+
+
+
+
+    WatchKey(key, eventList, OnResponse) {
+        const req = {
+            "type": "kvp",
+            "key": key,
+            "events": eventList,
+        };
+
+        this.m_watchList.push(req);
+        this.m_watchListCB.push(function(resp) {
+            if (typeof resp != 'number') {
+                assert(resp.key === key);
+                OnResponse(resp.ret, resp.key, resp.events);
+            } else {
+                OnResponse(resp, key, []);
+            }
+        });
+    }
+
+
+
+
+    WatchHashKey(key, hkey, eventList, OnResponse) {
+        const req = {
+            "type": "hash",
+            "key": key,
+            "events": eventList,
+        };
+
+        if (hkey != null) {
+            req.hkey = hkey;
+        }
+
+        this.m_watchList.push(req);
+        this.m_watchListCB.push(function(resp) {
+            if (typeof resp != 'number') {
+                assert(resp.key === key);
+                OnResponse(resp.ret, resp.key, resp.hkey, resp.events);
+            } else {
+                OnResponse(resp, key, hkey, []);
+            }
+        });
+    }
+    Encode(tcp) {
+        const request = {
+            "cmd": "req",
+            "seq": this.m_seq,
+            "appid": this.m_appid,
+            "token": this.m_token,
+            "ver": 1,
+        };
+
+        if (this.m_readList.length > 0) {
+            request.read = this.m_readList;
+        }
+
+        if (this.m_writeList.length > 0) {
+            request.write = this.m_writeList;
+        }
+
+        if (this.m_watchList.length > 0) {
+            request.watch = this.m_watchList;
+        }
+
+
+        const reqData = JSON.stringify(request);
+
+        if (tcp) {
+            let header = new kprotocol.KServerPackageHeader();
+            header.m_cmdType = kprotocol.KSERVER_PROTOCOL_CMD.REQ;
+
+            let encodeData = kprotocol.KServerPackageCodec.Encode({
+                "header": header,
+                "data": reqData
+            });
+
+            return encodeData;
+        } else {
+            return reqData;
+        }
+    }
+
+
+    Response(respObj) {
+
+
+        if (this.m_readListCB.length > 0) {
+            let ret;
+            if (typeof respObj === 'number') {
+                ret = respObj;
+            } else if (typeof respObj === "object") {
+                if (respObj.hasOwnProperty("ret") && respObj.ret !== 0) {
+                    ret = respObj.ret;
+                } else {
+                    ret = respObj.read;
+                }
+            } else {
+                ret = KRESULT.FAILED;
+            }
+            this.ResponseList(this.m_readListCB, ret);
+        }
+
+        if (this.m_writeListCB.length > 0) {
+            let ret;
+            if (typeof respObj === 'number') {
+                ret = respObj;
+            } else if (typeof respObj === "object") {
+                if (respObj.hasOwnProperty("ret") && respObj.ret !== 0) {
+                    ret = respObj.ret;
+                } else {
+                    ret = respObj.write;
+                }
+            } else {
+                ret = KRESULT.FAILED;
+            }
+            this.ResponseList(this.m_writeListCB, ret);
+        }
+
+        if (this.m_watchListCB.length > 0) {
+            let ret;
+            if (typeof respObj === 'number') {
+                ret = respObj;
+            } else if (typeof respObj === "object") {
+                if (respObj.hasOwnProperty("ret") && respObj.ret !== 0) {
+                    ret = respObj.ret;
+                } else {
+                    ret = respObj.watch;
+                }
+            } else {
+                ret = KRESULT.FAILED;
+            }
+            this.ResponseList(this.m_watchListCB, ret);
+        }
+    }
+
+
+    ResponseList(cbList, respList) {
+        for (let i = 0; i < cbList.length; ++i) {
+            let cb = cbList[i];
+            if (!cb) {
+
+                continue;
+            }
+
+            let resp;
+            if (typeof respList === 'object') {
+                resp = respList[i];
+            } else if (typeof respList === 'number') {
+                resp = respList;
+            } else {
+                resp = KRESULT.NOT_FOUND;
+            }
+
+            cb(resp);
+        }
+    }
+}
+class KServerXHRClient {
+    constructor(options) {
+
+        this.m_options = options;
+        this.m_nextSeq = 16;
+    }
+
+    NewRequest() {
+        const seq = this.m_nextSeq;
+        this.m_nextSeq++;
+
+        let req = new KServerRequest(this.m_options.appid, this.m_options.token, seq);
+        return req;
+    }
+
+    Request(request, OnCompete) {
+        let encodeData = request.Encode(false);
+        if (!encodeData) {
+            return false;
+        }
+
+        BaseLib.postData(this.m_options.url,encodeData,function(bodyString,errorCode) {
+            if (errorCode == 200) {
+                let respObj;
+                try {
+                    respObj = JSON.parse(bodyString);
+                } catch (e) {
+                    respObj = null;
+                }
+
+                if (!respObj) {
+                    request.Response(KRESULT.INVALID_FORMAT);
+                } else {
+                    request.Response(respObj);
+                }
+            } else {
+
+                BX_INFO("error request code:" + errorCode);
+                request.Response(KRESULT.FAILED);
+            }
+        });
+
+        return true;
+    }
+}
+
+class Authentication {
+    constructor(client_private_key, client_public_key,
+                ca_server='http://106.75.152.88:3000',
+                login_server='http://106.75.152.88:3000',
+                options={}) {
+        let {filePath} = options;
+        if (filePath) {
+            this.private_key = fs.readFileSync(client_private_key, "utf8");
+            this.public_key = fs.readFileSync(client_public_key, "utf8");
+
+        } else {
+            this.private_key = client_private_key;
+            this.public_key = client_public_key;
+        }
+        this.ca_server = ca_server;
+        this.login_server = login_server;
+    }
+
+    signup(uid, onComplete, extra_info={}) {
+        let pk = this._genPk();
+        let origin_pk = pk;
+        let {password, meta} = extra_info;
+        let sn = BaseLib.createGUID();
+
+        this._postJSON(this.ca_server + '/register',
+                       {
+                           uid,
+                           pk,
+                           password,
+                           sn,
+                           meta
+                       },
+                       resp => {
+                           let {uid, pk, result, msg} = resp;
+                           if (result !== ErrorCode.RESULT_OK) {
+                               console.error('singup error: ', result, msg);
+                               onComplete({result, msg});
+                               return;
+                           }
+                           this._signinWithSignedPk({uid, signed_pk: pk, pk: origin_pk}, onComplete);
+                       });
+    }
+
+    signin(uid, onComplete, extra_info={}) {
+        let {signed_pk, pk} = extra_info;
+        if (pk && signed_pk) {
+            this._signinWithSignedPk({uid, signed_pk, pk}, onComplete);
+        } else {
+            this.updateInfo(uid, null, {}, info => this._signinWithSignedPk(info, onComplete));
+        }
+    }
+
+    updateInfo(uid, pk=null, user_info={}, onComplete=null) {
+        let sn = BaseLib.createGUID();
+        let key = this._genKey(uid, sn);
+
+        let {public_key, private_key, password, levelid, meta} = user_info;
+        let new_pk;
+        if (public_key) {
+
+            new_pk = this._genPk(public_key);
+        } else if (pk == null) {
+
+            new_pk = this._genPk();
+        }
+        let origin_pk = new_pk || pk;
+
+        this._postJSON(this.ca_server + '/register',
+                       {pk: new_pk || pk, levelid, password, sn, meta, uid, key},
+                       resp => {
+                           let {pk, uid, result, msg} = resp;
+                           if (result !== ErrorCode.RESULT_OK) {
+                               console.error('updateInfo error: ', result, msg);
+                               onComplete({result, msg});
+                               return;
+                           };
+                           let signed_pk = pk;
+
+                           if (public_key) {
+                               this.public_key = public_key;
+                           }
+                           if (private_key)
+                               this.private_key = private_key;
+
+                           if (onComplete)
+                               onComplete({uid, pk: origin_pk, signed_pk: signed_pk, result: 0});
+                       });
+    }
+
+    checkToken(uid, token, onComplete) {
+        this._postJSON(this.login_server + '/checktoken',
+                       {uid, token},
+                       resp => {
+                           let {result, uid, expireAt, msg} = resp;
+                           if (result !== ErrorCode.RESULT_OK) {
+                               console.error('checktoken error: ', result, msg);
+                               onComplete({result, msg});
+                               return;
+                           };
+                           onComplete({result, uid, expireAt, msg});
+
+
+                       });
+    }
+
+    _signinWithSignedPk(info={}, onComplete) {
+        let {uid, signed_pk, pk} = info;
+        if (uid && signed_pk && pk) {
+            let sn = BaseLib.createGUID();
+            let key = this._genKey(uid, sn);
+            this._postJSON(this.login_server + '/login',
+                           {
+                               uid,
+                               sn,
+                               key,
+                               pk: signed_pk
+                           },
+                           resp => {
+                               let {result, token, msg} = resp;
+                               if (result != ErrorCode.RESULT_OK) {
+                                   console.error('signinWithSignedPk error: ', result, msg);
+                               }
+                               onComplete(Object.assign(info, {token, result, msg}));
+                           });
+        } else {
+            throw 'miss `uid` or `signed_pk` before login.';
+        }
+    }
+
+    _genKey(uid, sn) {
+        return BaseLib.privateEncrypt(this.private_key,
+                                      BaseLib.md5(`${uid},${sn}`));
+    }
+
+    _genPk(public_key=null) {
+        let create_time = Math.floor(Date.now() / 1000);
+        let expire_time = create_time + 24*3600*30;
+        return `${public_key || this.public_key},${create_time},${expire_time}`;
+    }
+
+    _postJSON(url, data, onComplete) {
+        BaseLib.postJSONEx(url, data, (resp, status, errCode) => {
+            let json_data;
+            if (errCode !== ErrorCode.RESULT_OK) {
+                onComplete({result: errCode, msg: resp});
+                return;
+            } else if (status !== 200) {
+                onComplete({result: status, msg: resp});
+                return;
+            } else {
+                try {
+                    json_data = JSON.parse(resp);
+                    if (typeof(json_data) !== 'object') {
+                        onComplete({result: ErrorCode.RESULT_INVALID_TYPE, msg: resp});
+                        return;
+                    }
+                } catch(e) {
+                    onComplete({result: ErrorCode.RESULT_INVALID_TYPE, msg: resp});
+                    return;
+                }
+            }
+            onComplete(json_data);
+        });
+    }
+}
+
+
+
 
 
 
 class InfoNode {
-    constructor(infoNodeManager,url) {
-        this._owner = infoNodeManager;
-        this._nodeURL = url;
-        this._type = InfoNode.TYPE_OBJECT;
-        this._state = InfoNode.STATE_INIT;
-        this._version = 0;
+    constructor(km,key,type) {
+
+        this._owner = km;
+        this._nodeKey =key;
+        this._type = type;
+
+        this._version = -1;
         this._lastUpdate = 0;
+
         this._cacheObject = null;
-
-        this._cacheList = null;
-        this._cacheListStartPos = 0;
-        this._cacheListLength = 0;
-
         this._cacheMap = null;
-
+        this._cacheMapInfo = null;
         this._onComplete = null;
+        this._state = InfoNode.STATE_INIT;
+    }
 
-
-
-
-
-
-
+    _show() {
+        let info = {}
+        info._nodeKey = this._nodeKey;
+        info._type = this._type;
+        info._version = this._version;
+        info._lastUpdate = this._lastUpdate;
+        info._cacheObject = this._cacheObject;
+        info._cacheMap = this._cacheMap;
+        info._cacheMapInfo = this._cacheMapInfo;
+        info._state = this._state;
+        console.log(JSON.stringify(info));
     }
 
 
     loadFromKObject(kobj) {
+        this._state = InfoNode.STATE_LOCAL_CACHED;
         if(kobj.type == InfoNode.TYPE_OBJECT) {
             this._cacheObject = kobj.object;
         }
@@ -687,49 +1517,113 @@ class InfoNode {
 
 
     sync(onComplete) {
+        let thisNode = this;
+
 
         BaseLib.asynCall(onComplete);
 
+        let request = thisNode._owner._client.NewRequest();
+        if(thisNode._type == InfoNode.TYPE_MAP) {
+            request.GetHashValue(thisNode._nodeKey,null,-1,function(ret, key, hkey, valueList, ver) {
+                if(ret == ErrorCode.RESULT_OK) {
 
-        let url = this._nodeURL + "meta";
-        let thisNode = this;
-        BaseLib.loadJSONFromURL(url,function(meta) {
-            if(meta) {
-                thisNode._type = meta.type;
-                thisNode._version = meta.version;
-                thisNode._lastUpdate = new Date().getTime();
-                if(thisNode._type == InfoNode.TYPE_OBJECT) {
-                    thisNode._cacheObject = meta.object;
+
+
+                    let valueArray = valueList.split(",");
+
+                    thisNode._cacheMap = {};
+                    thisNode._cacheMapInfo = {};
+                    thisNode._lastUpdate = BaseLib.getNow();
+                    thisNode._version = ver;
                     thisNode._state = InfoNode.STATE_NORMAL;
-                    onComplete(thisNode,ErrorCode.RESULT_OK);
-                } else if(thisNode._type == InfoNode.TYPE_LIST) {
 
-                    BX_LOG("list not support");
-                } else if(thisNode._type == InfoNode.TYPE_MAP) {
-                    let mapurl = thisNode._nodeURL + "map";
+                    let request2 = thisNode._owner._client.NewRequest();
+                    let completeNum = 0;
 
-                    BaseLib.loadJSONFromURL(mapurl,function(mapdata) {
-                        if(mapdata) {
-                            thisNode._cacheMap = mapdata;
-                            thisNode._state = InfoNode.STATE_NORMAL;
-                            onComplete(thisNode,InfoNode.RESULT_OK);
-                        } else {
-                            thisNode._state = InfoNode.STATE_ERROR;
+
+
+
+
+
+                    if(valueList.length > 0) {
+                        for(let i=0;i<valueArray.length;++i) {
+                            request2.GetHashValue(thisNode._nodeKey,valueArray[i],ver,function(ret, key, hkey, valueList, ver) {
+
+                                let truehkey = decodeURIComponent(hkey);
+                                if(ret == ErrorCode.RESULT_OK) {
+                                    try {
+                                        thisNode._cacheMap[truehkey] = JSON.parse(valueList);
+                                    } catch(e) {
+                                        console.error('knowledge:sync error: ', e, valueList);
+                                    }
+                                    thisNode._cacheMapInfo[truehkey] = {"version":ver};
+                                }
+                                completeNum ++ ;
+                                if(completeNum == valueArray.length) {
+
+                                    thisNode._state = InfoNode.STATE_NORMAL;
+                                    onComplete(thisNode,ErrorCode.RESULT_OK);
+                                }
+                            })
+
+                            request2.WatchHashKey(thisNode._nodeKey,valueArray[i],["change"],function() {
+                                return;
+                            });
                         }
-                    });
+                    } else {
+
+
+
+
+                        thisNode._owner._client.Request(request2);
+
+                        onComplete(thisNode,ErrorCode.RESULT_OK);
+                        return;
+                    }
+
+
+
+
+
+                    thisNode._owner._client.Request(request2);
 
                 } else {
-                    thisNode._type = InfoNode.TYPE_UNKNOWN;
-                    thisNode._state = InfoNode.STATE_ERROR;
+
+                    onComplete(thisNode,ret);
+                }
+            });
+
+
+
+            thisNode._owner._client.Request(request);
+
+
+        } else if(thisNode._type == InfoNode.TYPE_OBJECT) {
+            request.GetValue(thisNode._nodeKey,-1,function(ret,key,value,ver) {
+                if(ret == ErrorCode.RESULT_OK) {
+                    thisNode._cacheObject = JSON.parse(value);
+                    thisNode._lastUpdate = BaseLib.getNow();
+                    thisNode._version = ver;
+                    thisNode._state = InfoNode.STATE_NORMAL;
+
+
+
+
+
+
+
+                    onComplete(thisNode,ErrorCode.RESULT_OK)
+                } else {
                     onComplete(thisNode,ErrorCode.RESULT_UNKNOWN);
                 }
+            });
 
-            } else {
-                thisNode._type = InfoNode.TYPE_UNKNOWN;
-                thisNode._state = InfoNode.STATE_ERROR;
-                onComplete(thisNode,ErrorCode.RESULT_UNKNOWN);
-            }
-        })
+
+
+
+            thisNode._owner._client.Request(request);
+
+        }
     }
 
     getType() {
@@ -747,11 +1641,51 @@ class InfoNode {
             if (this._type == InfoNode.TYPE_OBJECT) {
                 return this._cacheObject;
             } else {
-                BX_LOG("read info node with error type.");
+                LOG_ERROR("read infonode " + this._nodeKey + " with error type." + this._type);
             }
         }
 
         return null;
+    }
+
+
+
+    objectUpdate(obj,onComplete) {
+        let thisNode = this;
+        if(this._state == InfoNode.STATE_NORMAL || this._state == InfoNode.STATE_LOCAL_CACHED) {
+            if (this._type == InfoNode.TYPE_OBJECT) {
+
+                thisNode._cacheObject = obj;
+                BaseLib.asynCall(function() {
+                    onComplete(thisNode,ErrorCode.RESULT_OK);
+                });
+                return ;
+
+
+                let request = thisNode._owner._client.NewRequest();
+
+                function onSetOK(ret,key,ver) {
+                    if(ret == ErrorCode.RESULT_OK) {
+                        thisNode._cacheObject = obj;
+                        thisNode._version = ver;
+                        thisNode._lastUpdate = BaseLib.getNow();
+                        onComplete(thisNode,ErrorCode.RESULT_OK);
+                    } else {
+                        BX_WARN("update object " + thisNOde._nodeKey + " error:" + ret);
+                        onComplete(thisNode,ret);
+                    }
+                }
+
+                request.SetValue(thisNode._nodeKey,JSON.stringify(obj),thisNode._version,onSetOK);
+
+
+
+                thisNode._owner._client.Request(request);
+
+                return;
+            }
+        }
+        LOG_ERROR("cann't update with error type or error state." + thisNode._nodeKey);
     }
     mapGet(key) {
         if(this._state == InfoNode.STATE_NORMAL || this._state == InfoNode.STATE_LOCAL_CACHED) {
@@ -759,34 +1693,91 @@ class InfoNode {
                 return this._cacheMap[key];
             }
         }
-        BX_LOG("cann't get map");
+        LOG_ERROR("cann't get map " + this._nodeKey + " " + key);
         return null;
     }
 
+    mapDelete(key,onComplete) {
+        let thisNode = this;
+        let request = thisNode._owner._client.NewRequest();
+
+
+        delete thisNode._cacheMap[hkey];
+        BaseLib.asynCall(function() {
+            onComplete(thisNode,ErrorCode.RESULT_OK,key);
+        });
+        return ;
+
+
+        function onSetOK(ret,nodeKey,hkey,ver) {
+            if(ret == ErrorCode.RESULT_OK) {
+                delete thisNode._cacheMap[hkey];
+                delete thisNode._cacheMapInfo[hkey];
+                if(onComplete) {
+                    LOG_INFO("delete map " + nodeKey + " ok.");
+                    onComplete(thisNode,ret,hkey);
+                }
+            } else {
+                LOG_ERROR("delete map " + nodeKey+ " error:" + ret);
+                onComplete(thisNode,ret,hkey);
+            }
+        }
+
+        request.SetHashValue(thisNode._nodeKey,encodeURIComponent(key),null,-1,onSetOK);
+
+
+
+        thisNode._owner._client.Request(request);
+
+    }
 
     mapSet(key,object,onComplete) {
+        let thisNode = this;
         if(this._state == InfoNode.STATE_NORMAL || this._state == InfoNode.STATE_LOCAL_CACHED) {
             if (this._type == InfoNode.TYPE_MAP) {
-                let postURL = this._nodeURL + "map";
 
-                let obj = {};
-                obj.key = key;
-                obj.object = object;
-                obj.base = this._version;
-                let thisNode = this;
 
-                BaseLib.postJSON(postURL, obj, function(resp){
-                    if (resp) {
-                        thisNode._cacheMap[key] = object;
-                        thisNode._version = resp.version;
-                        if(onComplete) {
-                            onComplete(null);
-                        }
-                    }
+                thisNode._cacheMap[key] = object;
+                thisNode._lastUpdate = BaseLib.getNow();
+                BaseLib.asynCall(function() {
+                    onComplete(thisNode,ErrorCode.RESULT_OK,key);
                 });
-            } else {
-                BX_LOG("info node is not ready");
+                return ;
+
+
+                let request = thisNode._owner._client.NewRequest();
+
+                function onSetOK(ret,nodekey,hkey,ver) {
+
+                    if(ret == ErrorCode.RESULT_OK) {
+                        thisNode._cacheMap[key] = object;
+                        thisNode._cacheMapInfo[key] = {"version":ver};
+                        thisNode._version = ver;
+                        thisNode._lastUpdate = BaseLib.getNow();
+
+                        if(onComplete) {
+                            onComplete(thisNode,ret,hkey);
+                        }
+                        LOG_INFO("update map " + thisNode._nodeKey + ":" + key +" OK,version:" + ver);
+                    } else {
+                        BX_WARN("update map " + thisNode._nodeKey + ":" + key +" error:" + ret + ",version:" + ver);
+                        onComplete(thisNode,ret,hkey);
+                    }
+                }
+
+                let keyVersion = -1;
+                if(thisNode._cacheMapInfo[key]) {
+                    keyVersion = thisNode._cacheMapInfo[key].version;
+                }
+                request.SetHashValue(thisNode._nodeKey,encodeURIComponent(key),JSON.stringify(object),-1,onSetOK);
+
+
+
+                thisNode._owner._client.Request(request);
+
             }
+        } else {
+            LOG_ERROR("cann't update map " + key + ",error type or error state " + this._type + " " + this._state);
         }
     }
 
@@ -798,12 +1789,49 @@ class InfoNode {
             }
         }
     }
+
+    mapClean(onComplete) {
+        let thisNode = this;
+
+
+                thisNode._cacheMap = {};
+                thisNode._lastUpdate = BaseLib.getNow();
+                BaseLib.asynCall(function() {
+                    onComplete(thisNode,ErrorCode.RESULT_OK);
+                });
+                return ;
+
+
+        let request = thisNode._owner._client.NewRequest();
+        function onCleanOK(ret,nodekey,hkey,ver) {
+            if(ret == ErrorCode.RESULT_OK) {
+                thisNode._cacheMap = {};
+                thisNode._cacheMapInfo = {}
+                thisNode._version = ver;
+                thisNode._lastUpdate = BaseLib.getNow();
+
+                if(onComplete) {
+                    onComplete(thisNode,ret);
+                }
+            } else {
+                LOG_ERROR("clean map " + thisNode._nodeKey + " error:" + ret);
+                onComplete(thisNode,ret);
+            }
+        }
+
+        request.SetHashValue(thisNode._nodeKey,null,null,-1,onCleanOK);
+
+
+
+        thisNode._owner._client.Request(request);
+
+    }
 }
 
 InfoNode.TYPE_OBJECT = 0;
-InfoNode.TYPE_LIST = 1;
-InfoNode.TYPE_MAP = 2;
-InfoNode.TYPE_UNKNOWN = 3;
+InfoNode.TYPE_MAP = 1;
+InfoNode.TYPE_LIST = 2;
+InfoNode.TYPE_UNKNOWN = 255;
 
 InfoNode.STATE_INIT = 0;
 InfoNode.STATE_LOCAL_CACHED = 1;
@@ -811,16 +1839,21 @@ InfoNode.STATE_NORMAL = 2;
 InfoNode.STATE_SYNC = 3;
 InfoNode.STATE_ERROR = 4;
 class KnowledgeManager {
-    constructor(baseURL) {
+    constructor(kHost,appid,apptoken,timeout) {
         this._cacheNode = {};
-        this._baseURL = baseURL;
+        this._baseURL = kHost;
         this._depends = {};
+        this._knowKnowledges = {};
         this._state = KnowledgeManager.STATE_NEED_SYNC;
+        this._host = kHost;
+        this._appid = appid;
+        this._timeout = timeout;
+        this._updateToken(apptoken);
 
-        let thisKM = this;
-        setInterval(function() {
-            thisKM.ready();
-        },5000);
+
+
+
+
     }
 
 
@@ -830,52 +1863,101 @@ class KnowledgeManager {
         this._localRootTree = JSON.parse(fs.readFileSync(localPath,"utf8"));
         for(let k in this._localRootTree) {
             let kobj = this._localRootTree[k];
-            let aNode = new InfoNode(this,"http://8.8.8.8/");
+            let aNode = new InfoNode(this,k,InfoNode.TYPE_OBJECT);
             aNode.loadFromKObject(kobj);
             this.addknowledgeKey(k,aNode);
         }
     }
 
 
+    _updateToken(newToken) {
+        this._token = newToken;
+        this._client = new KServerXHRClient({
+            "url" : this._host,
+            "appid" : this._appid,
+            "token" : this._token,
+            "timeout" : this._timeout
+        });
+        console.log(this._client);
+
+    }
+
     getState() {
         return this._state;
     }
-
-
-    getInfoURL(key) {
-        return this._baseURL + key + "/";
-    }
-
-    dependKnowledge(key,options) {
-        this._depends[key] = {"key":key,"isNeedSync":true,"options":options};
-        this._state = KnowledgeManager.STATE_NEED_SYNC;
+    dependKnowledge(key,nodeType,options) {
+        this._knowKnowledges [key] = {"key":key,"nodeType":nodeType};
+        let kinfo = {"key":key,"nodeType":nodeType,"isNeedSync":true,"options":options};;
+        this._depends[key] = kinfo;
+        if(this._state == KnowledgeManager.STATE_READY) {
+            this._state = KnowledgeManager.STATE_NEED_SYNC;
+        } else if(this._state== KnowledgeManager.STATE_SYNCING) {
+            this._syncQueue.push(kinfo);
+        }
     }
 
     ready(onReady) {
-        let syncQueue = [];
-        for(let key in this._depends) {
-            let info = this._depends[key];
-            if(info.isNeedSync) {
-                syncQueue.push(info);
-            }
-        }
-        let km = this;
-        function doSync() {
-            if(syncQueue.length > 0) {
-                let infoKey = syncQueue.pop().key;
-                let kInfo = new InfoNode(this,km.getInfoURL(infoKey));
-                kInfo.sync(function() {
-                    km._cacheNode[infoKey] = kInfo;
-                    doSync();
-                })
-            } else {
-                if(onReady) {
-                    onReady();
-                }
-            }
+        let thisKM = this;
+        if(this._state == KnowledgeManager.STATE_NEED_SYNC) {
+            this._state = KnowledgeManager.STATE_SYNCING
+            this._otherOnReady = new Array();
+        } else if(this._state == KnowledgeManager.STATE_SYNCING){
+
+            this._otherOnReady.push(onReady);
+            return;
+        } else {
+            onReady(true);
+            return;
         }
 
-        doSync();
+        function _startSync() {
+
+
+            thisKM._syncQueue = [];
+            for(let key in thisKM._depends) {
+                let info = thisKM._depends[key];
+                if(info.isNeedSync) {
+                    thisKM._syncQueue.push(info);
+                }
+            }
+            thisKM._depends = {};
+
+            let km = thisKM;
+
+            function doSync() {
+                if(thisKM._syncQueue.length > 0) {
+                    let _info = thisKM._syncQueue.pop();
+
+                    let kInfo = new InfoNode(km,_info.key,_info.nodeType);
+
+
+                    kInfo.sync(function(infoNode,resultCode) {
+                        if(resultCode == ErrorCode.RESULT_OK) {
+                            km._cacheNode[_info.key] = kInfo;
+
+                        } else {
+                            BX_WARN("sync knowledge " + infoNode._nodeKey + " return " + resultCode );
+                        }
+                        doSync();
+                    })
+                } else {
+                    thisKM._state = KnowledgeManager.STATE_READY;
+                    if(onReady) {
+                        BaseLib.asynCall(function(){onReady(true)});
+                    }
+                    if(thisKM._otherOnReady) {
+                        for(let i=0;i<thisKM._otherOnReady.length;++i) {
+                            let onReadyFunc = thisKM._otherOnReady[i];
+                            BaseLib.asynCall(function(){onReadyFunc(true)});
+                        }
+                    }
+                    thisKM._otherOnReady = null;
+                }
+            }
+
+            doSync();
+        }
+        _startSync();
 
     }
 
@@ -887,9 +1969,187 @@ class KnowledgeManager {
         delete this._knowledge
     }
 
+    _getRootKeyList(onComplete) {
+        let request = this._client.NewRequest();
+        request.GetHashValue(null,null,-1,function(ret, key, hkey, valueList, ver) {
+
+            if(ret == 0) {
+                onComplete(ret,valueList.split(","));
+            } else {
+                onComplete(ret,null);
+            }
+        });
 
 
 
+        this._client.Request(request);
+
+    }
+
+    _createObjectKnowledge(kid,obj,onComplete) {
+         let request = this._client.NewRequest();
+         request.SetValue(kid,obj,-1,function(ret,key,ver) {
+                if(ret != ErrorCode.RESULT_OK) {
+
+                    onComplete(ret,key);
+                } else {
+
+                    onComplete(ret,key);
+                }
+        });
+
+
+
+        this._client.Request(request);
+
+    }
+
+    _mapClean(kid,onComplete) {
+        let request = this._client.NewRequest();
+
+        function onCleanOK(ret,nodekey,hkey,ver) {
+            if(ret == ErrorCode.RESULT_OK) {
+                if(onComplete) {
+                    onComplete(ret);
+                }
+            } else {
+
+                onComplete(ret);
+            }
+        }
+
+        request.SetHashValue(kid,null,null,-1,onCleanOK);
+
+
+
+        this._client.Request(request);
+
+    }
+
+    _deleteObjectKnowledge(kid,onComplete) {
+        let thisKM = this;
+        let request = this._client.NewRequest();
+        request.SetValue(kid,null,-1,function(ret,key,ver) {
+            if(ret == ErrorCode.RESULT_OK) {
+                let kInfo = thisKM._cacheNode[kid];
+                if(kInfo) {
+                    delete thisKM._cacheNode[kid];
+                }
+                onComplete(ret,key);
+            } else {
+                onComplete(ret,key);
+            }
+        });
+
+
+
+        this._client.Request(request);
+
+    }
+
+    _createMapKnowledge(kid,onComplete) {
+        let thisKM = this;
+        let request = this._client.NewRequest();
+        request.SetHashValue(kid,"fake","{}",-1,function(ret,key) {
+            if(ret != ErrorCode.RESULT_OK) {
+                onComplete(ret,key);
+            } else {
+                let request2 = thisKM._client.NewRequest();
+                request2.SetHashValue(kid,"fake",null,-1,function(ret,key) {
+                    onComplete(ret,key);
+                });
+
+
+
+                thisKM._client.Request(request2);
+
+            }
+        });
+
+
+
+        thisKM._client.Request(request);
+
+    }
+
+    _deleteMapKnowledge(kid,onComplete) {
+        let thisKM = this;
+        let request = this._client.NewRequest();
+        request.SetValue(kid,null,-1,function(ret) {
+            if(ret == ErrorCode.RESULT_OK) {
+                let kInfo = thisKM._cacheNode[kid];
+                if(kInfo) {
+                    delete thisKM._cacheNode[kid];
+                }
+                onComplete(ret,kid);
+            } else {
+                onComplete(ret,kid);
+            }
+        });
+
+
+
+        this._client.Request(request);
+
+    }
+
+    getDependsKnowledgeInfo() {
+        let result = {};
+        for(let k in this._cacheNode) {
+            let aNode = this._cacheNode[k];
+            if(aNode) {
+                result[k] = aNode._version;
+            }
+        }
+
+        return result;
+    }
+
+    applyKnowledgeInfo(kmInfo,onComplete) {
+        let ret = 0;
+        let needSync = false;
+        let result = {};
+
+
+        onComplete();
+        return null;
+
+
+        for(let k in kmInfo) {
+            let aNode = this._cacheNode[k];
+            if(aNode) {
+                if(aNode._version > kmInfo[k]) {
+
+                    result[k] = aNode._version;
+                    ret = ret +1;
+                } else if(aNode._version < kmInfo[k]) {
+
+                    this.dependKnowledge(k,aNode.getType(),null);
+                    needSync = true;
+                    ret = ret +1;
+                }
+            }
+        }
+
+        let trueOnComplete = null;
+        if(ret == 0) {
+            trueOnComplete = onComplete;
+        }
+
+        if(needSync) {
+            this.ready(trueOnComplete);
+        } else {
+            if(trueOnComplete) {
+                trueOnComplete();
+            }
+        }
+
+        if(ret > 0) {
+
+            return result;
+        }
+        return null;
+    }
 
     getKnowledge(key) {
         let result = this._cacheNode[key];
@@ -898,20 +2158,21 @@ class KnowledgeManager {
                 return result;
             }
         } else {
-            if(this._depends[key] == null) {
-                BX_LOG("knowledge " + key + " is not in depends list");
+            if(this._knowKnowledges[key] == null) {
+                LOG_ERROR("knowledge " + key + " is not in depends list!");
                 return null;
             } else {
-
+                BX_WARN(key + " is syning,wait for ready.");
             }
         }
 
-        return result;
+        return null;
     }
 }
 
 KnowledgeManager.STATE_NEED_SYNC = 0;
 KnowledgeManager.STATE_READY = 1;
+KnowledgeManager.STATE_SYNCING = 2;
 
 
 
@@ -961,7 +2222,6 @@ class Zip{
 
 
                     if (p.charAt(p.length - 1) !== "/") {
-                        BX_INFO(p);
                         innerZip.addFile(p, fs.readFileSync(path), "", 0)
                     } else {
                         innerZip.addFile(p, new Buffer(0), "", 0)
@@ -1021,6 +2281,7 @@ class Zip{
             },
 
             function(){
+                BX_INFO('ERROR:extractEntryToAsync filed, entry='+entry+", targetPath="+targetPath);
                 callback(1);
             });
     }
@@ -1034,11 +2295,8 @@ class Zip{
             return;
         }
 
-        BX_INFO('read file async');
         innerZip.readFileAsync(entry,function(decompressedBuffer){
-            BX_INFO('read file success');
             innerZip.readAsTextAsync(entry,function(decompressedText){
-                BX_INFO('read as text success');
                 callback(0,decompressedText);
             });
         });
@@ -1052,377 +2310,42 @@ class Zip{
             if(ret){
                 callback(0);
             }else{
+                BX_INFO('ERROR:saveZipDataToFileAsync,zipPath:'+zipPath);
                 callback(1);
             }
         });
     }
 }
-var BX_REPOSITORY_REMOTE = 0;
-var BX_REPOSITORY_LOCAL = 1;
-var BX_REPOSITORY_FAKE = 2;
-var BX_REPOSITORY_SOURCE = 3;
+class RepositoryPuber{
 
-
-var repository_mode = BX_REPOSITORY_FAKE;
-
-
-
-
-var BX_BUCKY_MODULE = "bucky_modules";
-var bucky_modules_dir = "";
-var bucky_moduels_search_dirs=[];
-class Repository{
-
-    static setMode(v){
-        if(v!=BX_REPOSITORY_REMOTE&&v!=BX_REPOSITORY_LOCAL&&v!=BX_REPOSITORY_FAKE){
-            BX_ERROR("Invalid repository mode.");
-            return;
+    constructor(uid,traceId,token,modulesDir){
+        if(modulesDir===void 0 ){
+            BX_ERROR("ERROR: modules path is not assign.");
+            process.exit(1);
         }
-        repository_mode = v;
+
+        if(!path.isAbsolute(modulesDir)){
+            modulesDir = path.join(__dirname,modulesDir);
+        }
+
+        this.modulesDir = modulesDir;
+
+
+
+        this.uid = uid;
+        this.traceid = traceId;
+        this.token = token;
     }
 
-    static findModuleDir(folder){
-        if(folder==void 0 || !BaseLib.dirExistsSync(folder)){
-            folder = path.dirname(require.main.filename);
-            BX_INFO("set find folder:"+folder);
-        }
-
-        BX_INFO("=> find bucky_modules_dir");
-
-        var moduleDir = null;
-        do{
-
-            moduleDir = BaseLib.findOutFile(folder,new RegExp(BX_BUCKY_MODULE),'dir');
-            if(moduleDir!=null){
-                break;
-            }
-
-            moduleDir = BaseLib.findOutFile(__filename,new RegExp(BX_BUCKY_MODULE),'dir');
-            if(moduleDir!=null){
-                break;
-            }
-
-            for(let i in bucky_moduels_search_dirs){
-                let searchPath = bucky_moduels_search_dirs[i];
-                BX_INFO("Search:"+searchPath);
-                moduleDir = BaseLib.findOnceSync(searchPath,new RegExp(BX_BUCKY_MODULE),'dir');
-                if(moduleDir!=null){
-                    break;
-                }
-            }
-        }while(false);
-
-        bucky_modules_dir = moduleDir;
-
-        return moduleDir;
-    }
-
-    static findAppDir(appConfigFile){
-        var appConfigDir = path.dirname(appConfigFile);
-        return appConfigDir;
-    }
-
-    static addSearchPath(searchPath){
-        bucky_moduels_search_dirs.push(searchPath);
-    }
-
-    static setModulesPath(modulesDir){
-        bucky_modules_dir = modulesDir;
-    }
-
-
-
-
-    static createLoadPackage(appid,traceId,token,packageId,packagever,fileName,onSuccess){
-        var loadPackage = {
-            "ver":"1001",
-            "appid":appid,
-            "token":token,
-            "cmd":"load",
-            "traceid":traceId,
-            "packageid":packageId,
-            "packagever":packagever,
-            "filename":fileName,
-        }
-        onSuccess(true,loadPackage)
-    }
-
-    static pub_fake(moduleDir,packagesDir, appConfigFile, app, onSuccess){
-
-
-
-        var rpath = moduleDir;
-        BaseLib.mkdirsSync(rpath);
-        var metaFile = path.join(rpath,'.meta');
-
-        BX_INFO(metaFile);
-        var meta = {};
-        if(BaseLib.fileExistsSync(metaFile)){
-            try{
-                meta = JSON.parse(fs.readFileSync(metaFile));
-            }catch(err){
-                BX_ERROR("ERROR:read meta failed, metaFile path:"+metaFile);
-                process.exit(1);
-            }
-        }
-
-        var appMeta = meta[app.appid];
-        if(appMeta==void 0){
-            appMeta = {};
-            meta[app.appid] = appMeta;
-        }
-
-        var pkgsMeta = appMeta.packages;
-        if(pkgsMeta==void 0){
-            pkgsMeta = {}
-            meta[app.appid].packages = pkgsMeta;
-        }
-
-
-        var zip = new Zip(app.body.content);
-
-        for(let i in app.body.packages){
-            let pkg = app.body.packages[i];
-
-
-            var pkgPath = path.join(rpath,app.appid+"_"+pkg.id+"_"+pkg.ver);
-
-
-            var pkgMeta = appMeta.packages[pkg.id];
-            if(pkgMeta==void 0){
-                pkgMeta = {
-                    'maxversion':0,
-                    'versions':{}
-                }
-                appMeta.packages[pkg.id] = pkgMeta;
-            }
-
-            if(BaseLib.isBlank(pkg.ver)){
-                pkg.ver = BaseLib.inet_ntoa(pkgMeta.maxversion);
-            }
-
-
-            var pkgvern = BaseLib.inet_aton(pkg.ver)
-            if(pkgvern>pkgMeta.maxversion){
-                pkgMeta.maxversion = pkgvern
-            }
-
-
-            var pkgVerMeta = pkgMeta.versions[pkg.ver];
-            if(pkgVerMeta==void 0){
-                pkgVerMeta = {}
-                pkgMeta.versions[pkg.ver] = pkgVerMeta;
-            }
-
-
-            var pkgEntryName = pkg.relativepath+"/";
-            pkgVerMeta.source = path.join(packagesDir,pkg.relativepath);
-            if(BaseLib.dirExistsSync(pkgPath)){
-                BaseLib.deleteFolderRecursive(pkgPath);
-            }
-            zip.extractEntryToFolder(pkgEntryName,pkgPath);
-        }
-
-
-        BaseLib.writeFileTo(metaFile,JSON.stringify(meta));
-
-        onSuccess(0);
-    }
-
-    static findModuleDirCache(){
-        if(bucky_modules_dir!=""&&BaseLib.dirExistsSync(bucky_modules_dir)){
-            BX_INFO("=> hint bucky_modules dir cache");
-            return bucky_modules_dir;
-        }else{
-            return null;
-        }
-    }
-
-    static load_fake(appid,traceid,token,packageid,packagever,fileName,onSuccess){
-
-
-        var rpath = bucky_modules_dir;
-        if(rpath.length < 1){
-            rpath = Repository.findModuleDir();
-        }
-
-        var faliedResp = {
-            result:1
-        }
-
-
-        var metaFile = path.join(rpath,'.meta');
-        console.log(metaFile);
-
-        if(!BaseLib.fileExistsSync(metaFile)){
-            BX_ERROR("meta file not exists");
-            onSuccess(1,faliedResp);
-            return;
-        }
-
-        var meta = "";
-        try{
-            meta = JSON.parse(fs.readFileSync(metaFile));
-        }catch(err){
-            BX_ERROR("parser meta file failed:"+metaFile);
-            onSuccess(1,faliedResp);
-            return;
-        }
-        var appMeta = meta[appid];
-        if(appMeta==void 0){
-            BX_ERROR("missing app meta");
-            onSuccess(1,faliedResp);
-            return;
-        }
-
-        var pkgsMeta = appMeta.packages;
-        if(pkgsMeta==void 0){
-            BX_ERROR("missing packages meta");
-            onSuccess(1,faliedResp);
-            return;
-        }
-
-        var pkgMeta = pkgsMeta[packageid];
-        if(pkgsMeta==void 0){
-            BX_ERROR("missing package meta");
-            onSuccess(1,faliedResp);
-            return;
-        }
-
-        if(pkgMeta.versions==void 0){
-            BX_ERROR("missing package versions meta");
-            onSuccess(1,faliedResp);
-            return;
-        }
-
-        if(BaseLib.isBlank(packagever)){
-            packagever = BaseLib.inet_ntoa(pkgMeta.maxversion);
-        }
-        if(BaseLib.isBlank(packagever)){
-            BX_ERROR("missing package version meta");
-            onSuccess(1,faliedResp);
-            return;
-        }
-
-        var pkgVerMeta = pkgMeta.versions[packagever]
-        if(pkgVerMeta==void 0){
-            BX_ERROR("missing package version meta");
-            onSuccess(1,faliedResp);
-            return;
-        }
-
-        var code = "";
-        var isSource = false;
-        var sourcePath = null;
-        var pkgPath = path.join(rpath,appid+"_"+packageid+"_"+packagever);
-        if(pkgVerMeta.source!=(void 0) && BaseLib.dirExistsSync(pkgVerMeta.source)){
-            var modulePath = pkgVerMeta.source+PATH_SEPARATOR+fileName;
-            if(BaseLib.fileExistsSync(modulePath)){
-                code = fs.readFileSync(modulePath);
-
-                var moduleThisVerPath = pkgPath+PATH_SEPARATOR+fileName;
-                if(!BaseLib.fileExistsSync(moduleThisVerPath)){
-                    BX_ERROR("missing version's module path"+moduleThisVerPath);
-                    onSuccess(1,faliedResp);
-                    return;
-                }
-
-                var codeThisVer = fs.readFileSync(moduleThisVerPath);
-
-                if(BaseLib.md5(code)!=BaseLib.md5(codeThisVer)){
-                    BX_INFO("Souce Code is change after this version pub.");
-                    BX_INFO("Version:"+packagever);
-                    BX_INFO("Module Repository Path:"+moduleThisVerPath);
-                    BX_INFO("Module Source Path:"+modulePath);
-                    BX_INFO("Use the repository code.");
-                    BX_INFO("May be you should re pub it.");
-                }else{
-                    isSource = true;
-                    sourcePath = modulePath;
-                }
-            }
-        }
-
-        if(!isSource){
-            if(!BaseLib.dirExistsSync(pkgPath)){
-                BX_ERROR("missing package path");
-                onSuccess(1,faliedResp);
-                return;
-            }
-
-            var modulePath = pkgPath+PATH_SEPARATOR+fileName;
-            if(!BaseLib.fileExistsSync(modulePath)){
-                BX_ERROR("missing module path");
-                onSuccess(1,faliedResp);
-                return;
-            }
-
-            code = fs.readFileSync(modulePath);
-        }
-
-        var resp = {
-            "ver":1001,
-            "appid":appid,
-            "cmd":"loadresp",
-            "traceid":traceid,
-            "packageid":packageid,
-            "packagever":packagever,
-            "filename":fileName,
-            "md5":BaseLib.md5(code),
-            "type":isSource?"file":"text",
-            "length":code.length,
-            "content":isSource?sourcePath:code
-        };
-
-
-
-        onSuccess(0,resp);
-    }
-
-    static load(repositoryHost,appid,traceid,token,packageid,packagever,fileName,onSuccess){
-        if(packagever==void 0){
-            packagever = "";
-        }
-
-        if(repository_mode==BX_REPOSITORY_FAKE){
-            Repository.load_fake(appid,traceid,token,packageid,packagever,fileName,function(ret,resp){
-                if(ret==0){
-                    onSuccess(true,resp);
-                }else{
-                    onSuccess(false,resp);
-                }
-            });
-        }else{
-            if(repository_mode==BX_REPOSITORY_LOCAL){
-                repositoryHost = "http://127.0.0.1:3667/";
-            }
-
-            Repository.createLoadPackage(appid,traceid,token,packageid,packagever,fileName,function(ret,pkg){
-                BaseLib.postJSON(repositoryHost,pkg,function(resp){
-                    if(resp==(void 0)||resp==(void 0) || resp.result!=0){
-                        onSuccess(false,resp);
-                    }else{
-                        onSuccess(true, resp);
-                    }
-                });
-            });
-    }
-    }
-
-
-
-
-
-
-
-    static searchPackage(dir, result) {
+    searchPackage(dir, result) {
+        let self = this;
         let files = fs.readdirSync(dir);
         for (let index in files) {
             let filePath = dir + "/" + files[index];
 
-            var info = fs.statSync(filePath);
+            let info = fs.statSync(filePath);
             if(info.isDirectory()) {
-               Repository.searchPackage(filePath,result);
+               self.searchPackage(filePath,result);
             } else if(files[index] == "config.json") {
 
                 result.push(dir);
@@ -1430,13 +2353,14 @@ class Repository{
         }
     }
 
-    static searchJSFile(dir,result) {
+    searchJSFile(dir,result) {
+        let self = this;
         let files = fs.readdirSync(dir);
         for (let index in files) {
             let filePath = dir + "/" + files[index];
             let file = files[index];
 
-            var info = fs.statSync(filePath);
+            let info = fs.statSync(filePath);
             if(info.isDirectory()) {
                 searchJSFile(filePath,result);
             } else if(file.lastIndexOf(".js") == file.length - 3) {
@@ -1447,7 +2371,8 @@ class Repository{
         }
     }
 
-    static checkAndShowPackageInfo(packageInfo) {
+    checkAndShowPackageInfo(packageInfo) {
+        let self = this;
         let packageID = packageInfo.packageID;
         let version = packageInfo.version;
         let build = packageInfo.build;
@@ -1465,13 +2390,15 @@ class Repository{
         return true;
     }
 
-    static loadAppInfo(packagesDir, appConfigFile){
+    loadAppInfo(packagesDir, appConfigFile){
+        let self = this;
+
         BX_INFO('->packagesDir:'+packagesDir);
         BX_INFO('->appConfigFile:'+appConfigFile);
 
-        var errorNum = 0;
-        var warNum = 0;
-        var appInfo = null;
+        let errorNum = 0;
+        let warNum = 0;
+        let appInfo = null;
 
         try {
             appInfo = JSON.parse(fs.readFileSync(appConfigFile));
@@ -1481,13 +2408,13 @@ class Repository{
         }
 
         BX_INFO("->Start publish packages from " + packagesDir);
-        var packageList = new Array();
-        Repository.searchPackage(packagesDir,packageList);
-        var willPubPackageList = new Array();
+        let packageList = new Array();
+        self.searchPackage(packagesDir,packageList);
+        let willPubPackageList = new Array();
 
 
         BX_INFO('============');
-        for(var i=0;i<packageList.length;++i) {
+        for(let i=0;i<packageList.length;++i) {
 
             let packageDir = packageList[i];
             BX_INFO("->Start check package dir : " + packageDir);
@@ -1505,14 +2432,14 @@ class Repository{
                 errorNum = errorNum + 1;
                 continue;
             } else {
-                if (!Repository.checkAndShowPackageInfo(packageInfo)) {
+                if (!self.checkAndShowPackageInfo(packageInfo)) {
                     continue;
                 }
             }
 
 
             let jsfiles = new Array();
-            Repository.searchJSFile(packageDir, jsfiles);
+            self.searchJSFile(packageDir, jsfiles);
             for (let j = 0; j < jsfiles.length; ++j) {
                 try {
                     child_process.execFileSync("node", ["-c", jsfiles[j]]);
@@ -1550,21 +2477,24 @@ class Repository{
         return info;
     }
 
-    static createPubPackage(packagesDir,appConfigFile,traceId,token,onSuccess){
+    createPubPackage(packagesDir,appConfigFile,traceId,token,onSuccess){
+        let self = this;
 
-        var appInfo = Repository.loadAppInfo(packagesDir, appConfigFile);
 
-        var pubPackage = {
+        let appInfo = self.loadAppInfo(packagesDir, appConfigFile);
+
+        let pubPackage = {
            "ver":"1001",
-           "appid":appInfo.app.appID,
+           "appid":appInfo.app.appid,
+           "uid":self.uid,
            "token":token?token:appInfo.app.token,
            "cmd":"pub",
            "traceid":traceId
         };
 
-        var packageInfos = new Array();
-        for(var i=0;i<appInfo.packages.length;++i){
-            var pkg = appInfo.packages[i];
+        let packageInfos = new Array();
+        for(let i=0;i<appInfo.packages.length;++i){
+            let pkg = appInfo.packages[i];
             packageInfos.push({
                 "id":pkg.info.packageID,
                 "ver":pkg.info.version==void 0?"":pkg.info.version,
@@ -1579,7 +2509,7 @@ class Repository{
 
 
 
-        var zip = new Zip();
+        let zip = new Zip();
         zip.loadFolderAsync(packagesDir,function(zipData){
             pubPackage.body.md5 = BaseLib.md5(zipData);
             pubPackage.body.length = zipData.length;
@@ -1590,8 +2520,7 @@ class Repository{
         })
     }
 
-    static pub(modulesDir,packagesDir,appConfigFile,traceId,token,onSuccess){
-
+    pub(packagesDir,appConfigFile,onComplete){
         if(!path.isAbsolute(packagesDir)){
             packagesDir = path.join(__dirname,packagesDir);
         }
@@ -1601,6 +2530,8 @@ class Repository{
             appConfigFile = path.join(__dirname,appConfigFile);
         }
         BX_INFO("appConfiFile:"+packagesDir);
+
+        let self = this;
 
         if(!BaseLib.dirExistsSync(packagesDir)){
             BX_ERROR("ERROR: packagesDir is not exist:"+packagesDir);
@@ -1612,49 +2543,139 @@ class Repository{
             process.exit(1);
         }
 
-        Repository.createPubPackage(packagesDir,appConfigFile,traceId,token,function(repositoryHost, pkg){
-            if(repository_mode==BX_REPOSITORY_FAKE){
+        self.createPubPackage(packagesDir,appConfigFile,self.traceId,self.token,function(host, pkg){
+            BX_INFO("post pub request to host:"+host);
+            self.pubImpl(host,packagesDir,appConfigFile,pkg,onComplete);
+        });
+    }
 
-                if(modulesDir===void 0 ){
-                    BX_ERROR("ERROR: modules path is not assign.");
-                    process.exit(1);
+
+    pubImpl(host,packagesDir,appConfigFile,app,onComplete){
+        BX_INFO("post to local bucky_modules");
+        let self = this;
+        let modulesDir = self.modulesDir;
+
+        BX_INFO(modulesDir);
+        BaseLib.mkdirsSync(modulesDir);
+        let metaFile = path.join(modulesDir,'.meta');
+
+        BX_INFO(metaFile);
+        let meta = {};
+        if(BaseLib.fileExistsSync(metaFile)){
+            try{
+                meta = JSON.parse(fs.readFileSync(metaFile));
+            }catch(err){
+                BX_ERROR("ERROR:read meta failed, metaFile path:"+metaFile);
+                process.exit(1);
+            }
+        }
+
+        let appMeta = meta[app.appid];
+        if(appMeta==void 0){
+            appMeta = {};
+            meta[app.appid] = appMeta;
+        }
+
+        let pkgsMeta = appMeta.packages;
+        if(pkgsMeta==void 0){
+            pkgsMeta = {}
+            meta[app.appid].packages = pkgsMeta;
+        }
+
+
+        let zip = new Zip(app.body.content);
+
+        for(let i in app.body.packages){
+            let pkg = app.body.packages[i];
+
+
+            let pkgPath = path.join(modulesDir,app.appid+"_"+pkg.id+"_"+pkg.ver);
+
+
+            let pkgMeta = appMeta.packages[pkg.id];
+            if(pkgMeta==void 0){
+                pkgMeta = {
+                    'maxversion':0,
+                    'versions':{}
                 }
+                appMeta.packages[pkg.id] = pkgMeta;
+            }
 
-                if(!path.isAbsolute(modulesDir)){
-                    modulesDir = path.join(__dirname,modulesDir);
-                }
-
-
-                Repository.pub_fake(modulesDir,packagesDir, appConfigFile, pkg, function(ret){
-                    var resp = {
-                        "ver":pkg.ver,
-                        "appid":pkg.appid,
-                        "cmd":"pubresp",
-                        "traceid":pkg.traceid,
-                        "result":0
-                    };
-                    if(ret!=0){
-                        resp.result = 1;
-                        onSuccess(false,resp,pkg);
-                    }else{
-                        onSuccess(true,resp,pkg);
-                    }
-                });
-            }else{
-                if(repository_mode==BX_REPOSITORY_LOCAL){
+            if(BaseLib.isBlank(pkg.ver)){
+                pkg.ver = BaseLib.inet_ntoa(pkgMeta.maxversion);
+            }
 
 
-                    repositoryHost = "http://127.0.0.1:3667/";
-                }else{
+            let pkgvern = BaseLib.inet_aton(pkg.ver)
+            if(pkgvern>pkgMeta.maxversion){
+                pkgMeta.maxversion = pkgvern
+            }
 
-                }
 
-                BX_INFO("post pub request to host:"+repositoryHost);
-                BaseLib.postJSON(repositoryHost,pkg,function(resp){
-                    if(resp==(void 0)||resp.result==(void 0)||resp.result!=0){
-                        onSuccess(false, resp, pkg);
-                    }else{
-                        onSuccess(true, resp, pkg);
+            let pkgVerMeta = pkgMeta.versions[pkg.ver];
+            if(pkgVerMeta==void 0){
+                pkgVerMeta = {}
+                pkgMeta.versions[pkg.ver] = pkgVerMeta;
+            }
+
+            var pkgEntryName = pkg.relativepath+"/";
+            pkgVerMeta.source = path.join(packagesDir,pkg.relativepath);
+        }
+
+
+        BaseLib.writeFileTo(metaFile,JSON.stringify(meta));
+
+        let resp = {
+            "ver":app.ver,
+            "appid":app.appid,
+            "cmd":"pubresp",
+            "traceid":app.traceid,
+            "result":0
+        };
+
+        onComplete(true,resp,app);
+    }
+}
+
+class RepositoryLoader {
+
+    constructor(host,uid,appid,traceid,token,modulesDir){
+        this.modulesDir = modulesDir;
+        this.defaultModulesDirName = "bucky_modules";
+
+
+
+        this.host = host;
+        this.uid = uid;
+        this.appid = appid;
+        this.traceid = traceid;
+        this.token = token;
+    }
+
+    loadPackage(packageid,packagever,onConfig,onComplete){
+        let self = this;
+        if(packagever==void 0){
+            packagever = "";
+        }
+        self.loadFile(packageid,packagever,"config.json",function(ret,config){
+            if(!ret){
+                BX_ERROR("load config.json failed.");
+                onComplete(false);
+                return;
+            }
+
+            onConfig(config);
+
+            let count = Object.keys(config.modules).length;
+            let index = 0;
+            let modules = {};
+            for(let moduleKey in config.modules){
+                let filename = config.modules[moduleKey];
+                self.loadFile(packageid,packagever,filename,function(ret,module){
+                    index++;
+                    modules[moduleKey] = module;
+                    if(index==count){
+                        onComplete(true,config,modules);
                     }
                 });
             }
@@ -1662,6 +2683,175 @@ class Repository{
     }
 
 
+    findModuleDir(folder){
+        if(folder==void 0 || !BaseLib.dirExistsSync(folder)){
+            folder = path.dirname(require.main.filename);
+            BX_INFO("set find folder:"+folder);
+        }
+
+        BX_INFO("=> find modulesDir");
+
+        let moduleDir = null;
+        do{
+            moduleDir = BaseLib.findOutFile(folder,new RegExp(this.defaultModulesDirName),'dir');
+            if(moduleDir!=null){
+                break;
+            }
+
+            moduleDir = BaseLib.findOutFile(__filename,new RegExp(this.defaultModulesDirName),'dir');
+            if(moduleDir!=null){
+                break;
+            }
+
+        }while(false);
+
+        this.modulesDir = moduleDir;
+
+        return moduleDir;
+    }
+
+    loadFile(packageid,packagever,filename,onComplete){
+        let self = this;
+        let modulesDir = self.modulesDir;
+        let appid = self.appid;
+
+        if(modulesDir.length < 1){
+            modulesDir = self.findModuleDir();
+        }
+
+        let faliedResp = {
+            result:1
+        }
+
+
+        let metaFile = path.join(modulesDir,'.meta');
+        let resultModule = null;
+        do{
+            if(!BaseLib.fileExistsSync(metaFile)){
+                BX_ERROR("meta file not exists");
+                break;
+            }
+
+            let meta = "";
+            try{
+                meta = JSON.parse(fs.readFileSync(metaFile));
+            }catch(err){
+                BX_ERROR("parser meta file failed:"+metaFile);
+                break;
+            }
+            let appMeta = meta[appid];
+            if(appMeta==void 0){
+                BX_ERROR("missing app meta");
+                break;
+            }
+
+            let pkgsMeta = appMeta.packages;
+            if(pkgsMeta==void 0){
+                BX_ERROR("missing packages meta");
+                break;
+            }
+
+            let pkgMeta = pkgsMeta[packageid];
+            if(pkgMeta==void 0){
+                BX_ERROR("missing package meta");
+                break;
+            }
+
+            if(pkgMeta.versions==void 0){
+                BX_ERROR("missing package versions meta");
+                break;
+            }
+
+            if(BaseLib.isBlank(packagever)){
+                packagever = BaseLib.inet_ntoa(pkgMeta.maxversion);
+            }
+            if(BaseLib.isBlank(packagever)){
+                BX_ERROR("missing package version meta");
+                break;
+            }
+
+            let pkgVerMeta = pkgMeta.versions[packagever]
+            if(pkgVerMeta==void 0){
+                BX_ERROR("missing package version meta");
+                break;
+            }
+
+            let pkgPath = path.join(modulesDir,appid+"_"+packageid+"_"+packagever);
+            if(pkgVerMeta.source==(void 0) && BaseLib.dirExistsSync(pkgVerMeta.source)){
+                BX_ERROR("missing local package source");
+                break;
+            }
+
+            if(!BaseLib.dirExistsSync(pkgVerMeta.source)){
+                BX_ERROR("package local dir is not exist:"+pkgMeta.source);
+                break;
+            }
+
+            let modulePath = pkgVerMeta.source+PATH_SEPARATOR+filename;
+            if(!BaseLib.fileExistsSync(modulePath)){
+                BX_ERROR("target moudule is not exist:"+modulePath);
+                break;
+            }
+            let ext = path.extname(filename);
+            if(ext==".json"){
+                try{
+                    resultModule = JSON.parse(fs.readFileSync(modulePath));
+                }catch(err){
+
+                }
+            }else if(ext==".js"){
+                resultModule = self.requireEx(modulePath);
+            }else{
+                BX_ERROR("ERROR:UnKnown file type.")
+            }
+        }while(false);
+
+        if(resultModule==null){
+            BX_ERROR("load module failed.")
+            onComplete(false);
+        }else{
+
+            onComplete(true,resultModule);
+        }
+    }
+    getHeader(modulePath){
+        let corejspath = path.relative(path.dirname(modulePath),__filename);
+        let local_header = "\"use strict\";let _core = require(\""+corejspath+"\");let BaseLib = _core.BaseLib;let ErrorCode =_core.ErrorCode;let BX_INFO = _core.BX_INFO;let BX_CHECK = _core.BX_CHECK;let Application = _core.Application;let getCurrentRuntime = _core.getCurrentRuntime;let getCurrentApp = _core.getCurrentApp;let XARPackage = _core.XARPackage;let RuntimeInstance = _core.RuntimeInstance;let RuntimeInfo = _core.RuntimeInfo;let Device = _core.Device;let DeviceInfo = _core.DeviceInfo;let OwnerUser = _core.OwnerUser;let GlobalEventManager = _core.GlobalEventManager;let KnowledgeManager = _core.KnowledgeManager;";
+        return local_header;
+    }
+
+    requireEx(modulePath){
+        let scriptContent = fs.readFileSync(modulePath, "utf8");
+        let newScriptContent = scriptContent.replace(/.use strict.;/, this.getHeader(modulePath));
+
+        fs.writeFileSync(modulePath, newScriptContent);
+        let m = require(modulePath);
+        fs.writeFileSync(modulePath, scriptContent);
+
+        return m;
+    }
+
+}
+
+class Repository{
+    static init(modulesDir){
+        Repository.modulesDir = modulesDir;
+    }
+    static getLoader(host,uid,traceid,token,appid){
+        let u = BaseLib.decodeUID(uid);
+        let loader = new RepositoryLoader(host,uid,appid,traceid,token,Repository.modulesDir);
+        return loader;
+    }
+    static getPuber(uid,traceId,token){
+        let u = BaseLib.decodeUID(uid);
+        if(u.typeid!==BX_UID_TYPE_DEVELOPER||u.levelid<5){
+            BX_ERROR("ERROR:get puber failed, typeid:"+u.typeid+",levelid:"+u.levelid);
+            return null;
+        }
+
+        let puber = new RepositoryPuber(uid,traceId,token,Repository.modulesDir);
+        return puber;
+    }
 }
 
 class XARPackage {
@@ -1687,6 +2877,10 @@ class XARPackage {
 
             this.m_exportModules[moduleID] = moduleInfo;
         }
+
+
+        this.loader = Repository.getLoader(this.baseURL,ownerRuntime.getInstanceID(),"abc", ownerRuntime.getToken(),this.ownerAppID);
+
     }
 
     getPackageInfo() {
@@ -1707,37 +2901,9 @@ class XARPackage {
 
 
 
-                Repository.load(this.baseURL, this.ownerAppID,
-                    "abc", "123", this.m_packageInfo.packageID, this.m_packageInfo.version, moduleInfo.path, function(ret,resp) {
-                        if (!ret) {
-                            onComplete(null,ErrorCode.RESULT_NOT_FOUND);
-                        } else {
-                            let content = resp.content;
-                            if (content) {
-                                if(resp.type=='file'){
-                                    if(!BaseLib.fileExistsSync(content)){
-                                        onComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
-                                    }
-                                    content = fs.readFileSync(content);
-                                }
-
-                                let thisModule = {};
-                                thisModule.info = moduleInfo;
-                                let scriptContent = "(function(_owp_,module) {let getCurrentPackage=function(){return _owp_;}; \n" + content +"\n})(thisPackage,thisModule);";
-
-                                let funcResult = eval(scriptContent);
-                                if(funcResult) {
-                                    thisModule.exports = funcResult;
-                                }
-                                moduleInfo.loadedModule = thisModule.exports;
-                                onComplete(thisModule.exports,ErrorCode.RESULT_OK);
-
-
-                            } else {
-                                onComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
-                            }
-                        }
-                    });
+                this.loader.loadFile(this.m_packageInfo.packageID,this.m_packageInfo.version,moduleInfo.path,function(ret,module){
+                    onComplete(module,ErrorCode.RESULT_OK);
+                });
 
             }
         } else {
@@ -1838,8 +3004,10 @@ class RuntimeStorage {
         let objPath = this.m_baseDir + objID;
         this.m_fs.readFile(objPath,function(err,data) {
             if(err) {
+                console.log("read " + objPath + " failed");
                 onComplete(objID,null);
             } else {
+                 console.log("read " + objPath + " ok");
                 let objResult = JSON.parse(data);
                 onComplete(objID,objResult);
             }
@@ -1879,13 +3047,103 @@ class RuntimeStorage {
 
     }
 }
+class Scheduler{
+ constructor(host,uid,token,appid){
+  this.host = host;
+  this.uid = uid;
+  this.token = token;
+  this.appid = appid;
+ }
+
+ selectRuntime(packageInfo,deveiceInfo,callback){
+  let req = {
+   "cmd":"selectruntime",
+   "uid":this.uid,
+   "token":this.token,
+
+   "appid":this.appid,
+   "packageid":packageInfo.packageID,
+   "packageinfo":packageInfo
+  }
+
+  if(deveiceInfo.devicegroupid){
+   req.devicegroupid = deveiceInfo.devicegroupid
+  }
+
+  if(deveiceInfo.devicetype){
+   req.devicetype = deveiceInfo.devicetype;
+  }
+
+  if(deveiceInfo.deviceability){
+   req.deviceability = deveiceInfo.deviceability;
+  }
+
+  BX_INFO("do select runtime...")
+  BaseLib.postJSON(this.host,req,function(resp){
+   if( (resp!==null) && (resp.result===0) ){
+                BX_INFO('select runtime success');
+                callback(true,resp.runtime);
+            }else{
+                BX_ERROR('ERROR:select runtime failed.');
+                callback(false);
+            }
+  })
+ }
+
+ selectBus(callback){
+  let req = {
+   "cmd":"selectbus",
+   "uid":this.uid,
+   "token":this.token,
+   "appid":this.appid
+  }
+
+  BX_INFO("do select bus...");
+  console.log(req);
+  BaseLib.postJSON(this.host,req,function(resp){
+   if( (resp!==null) && (resp.result===0) ){
+                BX_INFO('select bus success');
+                callback(true,resp.bus);
+            }else{
+                BX_ERROR('ERROR:select bus failed.');
+                callback(false);
+            }
+  })
+ }
+
+ selectEvent(eventid,callback){
+  let req = {
+   "cmd":"selectevent",
+   "uid":this.uid,
+   "token":this.token,
+   "appid":this.appid,
+   "eventid":eventid
+  }
+
+  BX_INFO("do select event...");
+  console.log(req);
+  BaseLib.postJSON(this.host,req,function(resp){
+   if( (resp!==null) && (resp.result===0) ){
+                BX_INFO('select event success');
+                callback(true,resp.event);
+            }else{
+                BX_ERROR('ERROR:select event failed.');
+                callback(false);
+            }
+  })
+ }
+
+}
 
 
 
 
-var schema = "http://";
-function initCurrentRuntime(runtimeRootDir, localKMPath) {
-    let runtimeID = "bucky_allinone_runtime"
+
+
+
+var currentTraceID = 1;
+function initCurrentRuntime(runtimeRootDir,localKMPath) {
+    let runtimeID = BaseLib.createUID(BX_UID_TYPE_RUNTIME,BX_RUNTIME_LEVEL);
     let token = BaseLib.createGUID();
     var thisDevice = new Device();
 
@@ -1918,7 +3176,7 @@ function initCurrentRuntime(runtimeRootDir, localKMPath) {
 
     Application._currentRuntime.getKnowledgeManager().initFromLocalPath(localKMPath);
 
-    BX_LOG("initCurrentRuntime OK");
+    BX_INFO("initCurrentRuntime OK");
     return ErrorCode.RESULT_OK;
 }
 
@@ -1929,12 +3187,14 @@ function getCurrentRuntime() {
 
 class RuntimeInfo {
     constructor(runtimeID) {
-        this.ID = runtimeID;
-        this.OwnerDeviceID = "";
-        this.OwnerAppID = "";
-        this.OwnerAppHost = "";
-        this.Ability = new Array();
-        this.PostURL= "";
+        this.id = runtimeID;
+        this.appid = "";
+        this.category = "runtime";
+        this.addr = new Array();
+        this.ownerDeviceID = "";
+        this.ownerAppID = "";
+        this.ownerAppHost = "";
+        this.ability = new Array();
     }
 }
 
@@ -1947,31 +3207,43 @@ class RuntimeInstance {
         this.m_token = runtimeToken;
         this.m_ability = new Array();
         this.m_runtimeDir = "";
-        this.m_postURL = "";
+        this.m_addr = new Array();
 
         this.m_packages = {};
         this.m_proxyPackages = {};
         this.m_ownerDevice = null;
-        this.m_knowledegeManager = new KnowledgeManager(theApp.getHost() + "/knowledges/");
+        let ktoken = runtimeID+"|"+runtimeToken;
+        this.m_knowledegeManager = new KnowledgeManager(theApp.getKnowledgeHost(),theApp.getID(),ktoken,5*1000);
         this.m_driverLoadRule = {};
+        this.m_eventManager = null;
 
-        this.m_cache = new RuntimeCache(this);
+
+        this.m_allCaches = {};
+
         this.m_allStorages = {};
         this.m_allBindStoragePath = {};
         this.m_logger = null;
+
+        let schedulerhost = theApp.getSchedulerHost();
+        this.scheduler = new Scheduler("https://dev.tinyappcloud.com/services/scheduler",this.m_id,this.m_token,this.m_app.getID());
     }
 
 
     initWithInfo(info) {
-        this.m_id = info.ID;
-        this.m_ability = info.Ability.slice(0);
-        this.m_postURL = info.PostURL;
-        if(info.Storages) {
-            if (info.Storages.length > 0) {
-                for(let i=0;i<info.Storages.length;++i) {
-                    let localPath = info.StoragePath + info.Storages[i];
-                    this.bindRuntimeStorage(info.Storages[i],localPath);
-                    BX_LOG("**** will create storage:" + info.Storages[i] + " at " + localPath);
+        this.m_id = info.id;
+        this.m_ability = info.ability.slice(0);
+        this.m_addr =[];
+        if (info.addr) {
+            for (let i=0; i<info.addr.length;++i) {
+                this.m_addr.push({"ip":info.addr[i].ip, "port":info.addr[i].port});
+            }
+        }
+        if(info.storages) {
+            if (info.storages.length > 0) {
+                for(let i=0;i<info.storages.length;++i) {
+                    let localPath = info.storagePath + info.storages[i];
+                    this.bindRuntimeStorage(info.storages[i],localPath);
+                    BX_INFO("**** will create storage:" + info.storages[i] + " at " + localPath);
                 }
             }
         }
@@ -1995,6 +3267,26 @@ class RuntimeInstance {
         return this.m_id;
     }
 
+    getToken() {
+        return this.m_token;
+    }
+
+    setToken(newToken) {
+
+
+
+
+
+
+
+        return "";
+
+    }
+
+    getID() {
+        return this.m_id;
+    }
+
     getOwnerDevice() {
         return this.m_ownerDevice;
     }
@@ -2006,38 +3298,56 @@ class RuntimeInstance {
     createRuntimeInfo() {
         let result = new RuntimeInfo(this.m_id);
 
-        result.OwnerDeviceID = this.m_ownerDevice.getDeviceID();
-        result.OwnerAppID = this.m_app.getID();
-        result.OwnerAppHost = this.m_app.getHost();
-        result.Ability = this.m_ability.slice(0);
-        result.PostURL= this.m_postURL;
-        result.DeviceType = this.m_ownerDevice.getDeviceType();
+        result.ownerDeviceID = this.m_ownerDevice.getDeviceID();
+        result.appid = this.m_app.getID();
+
+        result.ability = this.m_ability.slice(0);
+        result.deviceType = this.m_ownerDevice.getDeviceType();
         if(this.m_allBindStoragePath) {
-            result.Storages = [];
+            result.storages = [];
             for(let gpath in this.m_allBindStoragePath) {
-                result.Storages.push(gpath);
+                result.storages.push(gpath);
             }
         }
+        result.addr.push({"ip":this.m_addr[0].ip, "port":this.m_addr[0].port});
 
-        result.IsOnline = true;
+        result.isOnline = true;
 
         return result;
+    }
+
+    getGlobalEventManager() {
+        if(this.m_eventManager == null) {
+            this.m_eventManager = new GlobalEventManager(this.m_knowledegeManager);
+        }
+        return this.m_eventManager;
     }
 
     getKnowledgeManager () {
         return this.m_knowledegeManager;
     }
 
-    getRuntimeCache() {
-        return this.m_cache;
+    getRuntimeCache(globalPath) {
+        return this.m_allCaches[globalPath];
     }
 
     getRuntimeStorage(globalPath) {
+
         return this.m_allStorages[globalPath];
     }
 
     getLocalStorage() {
         return null;
+    }
+
+    enableRuntimeCache(globalPath) {
+        if(this.m_allStorages[globalPath]) {
+            return ErrorCode.RESULT_ALREADY_EXIST;
+        }
+
+        let newCache = new RuntimeCache(this);
+        this.m_allCaches[globalPath] = newCache;
+        return ErrorCode.RESULT_OK;
     }
 
     enableRuntimeStorage(globalPath) {
@@ -2058,14 +3368,7 @@ class RuntimeInstance {
 
 
     getLogger() {
-        let thisRumtime = this;
-        if (!thisRumtime.m_logger) {
-            let logName = thisRumtime.m_app.getID() + ":runtime_"+thisRumtime.getInstanceID();
-            thisRumtime.m_logger = console;
-
-        }
-
-        return thisRumtime.m_logger;
+        return console;
     }
 
 
@@ -2118,13 +3421,11 @@ class RuntimeInstance {
             return;
         }
         let thisRuntime = this;
-        BX_LOG("start load xar package:" + xarInfo);
+        BX_INFO("start load xar package:" + xarInfo);
 
 
 
         let repositoryList = this.m_app.repositoryList.slice(0);
-
-        BX_LOG(repositoryList.length.toString());
         let tryLoad = function(pos) {
             if(pos >= repositoryList.length) {
                 onComplete(null,ErrorCode.RESULT_NOT_FOUND);
@@ -2132,7 +3433,7 @@ class RuntimeInstance {
             }
 
             let repositoryHost = repositoryList[pos];
-            BX_LOG("repositoryHost:"+repositoryHost);
+
 
 
             let xarID = xarInfo;
@@ -2142,105 +3443,150 @@ class RuntimeInstance {
                 xarID = xarDetail[0];
                 xarVersion = xarDetail[1];
             }
-            Repository.load(repositoryHost, thisRuntime.getOwnerApp().getID(),
-                "abc", "123", xarID, xarVersion, "config.json", function(ret, resp) {
+            let proxyLoaded = false;
 
-                    if (!ret) {
 
-                        tryLoad(pos+1);
-                    } else {
-                        let content = resp.content;
-                        if (content==void 0) {
-                            onComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
-                            return;
-                        }
+            let loader = Repository.getLoader(repositoryHost,thisRuntime.getInstanceID(),currentTraceID.toString(), thisRuntime.getToken(),thisRuntime.getOwnerApp().getID());
+            ++currentTraceID;
+            loader.loadFile(xarID, xarVersion,"config.json",function(ret,xarConfig){
 
-                        let configText = content;
-                        if(resp.type=='file'){
-                            if(!BaseLib.fileExistsSync(content)){
+                if(!ret){
+                    tryLoad(pos+1);
+                    return;
+                }
+
+                xarConfig.baseURL = repositoryHost;
+                if(xarConfig.knowledges) {
+                    for (let i = 0; i < xarConfig.knowledges.length; ++i) {
+                        thisRuntime.m_knowledegeManager.dependKnowledge(xarConfig.knowledges[i].key,xarConfig.knowledges[i].type);
+                    }
+                }
+
+                if(xarConfig.storages) {
+                    for(let i=0;i<xarConfig.storages.length;++i) {
+                        thisRuntime.enableRuntimeStorage(xarConfig.storages[i]);
+                    }
+                }
+
+                if(xarConfig.caches) {
+                    for(let i=0;i<xarConfig.caches.length;++i) {
+                        thisRuntime.enableRuntimeCache(xarConfig.caches[i]);
+                    }
+                }
+
+                thisRuntime.m_knowledegeManager.ready(function() {
+
+                    if(thisRuntime.isXARPackageCanLoad(xarConfig,thisRuntime.m_id)) {
+
+                        let xarPackage = new XARPackage(xarConfig,thisRuntime);
+                        thisRuntime.m_packages[xarInfo] = xarPackage;
+
+                        xarPackage.state = XARPackage.XAR_STATE_RUNING;
+
+                        loader.loadFile(xarID, xarVersion,"onload.js", function(ret, module){
+                            if (!ret) {
+                                thisRuntime.m_packages[xarInfo] = null;
                                 onComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
-                                return;
-                            }
-                            configText = fs.readFileSync(content);
-                        }
-
-                        var xarConfig = JSON.parse(configText);
-                        xarConfig.baseURL = repositoryHost;
-                        if(xarConfig.knowledges) {
-                            for (let i = 0; i < xarConfig.knowledges.length; ++i) {
-                                thisRuntime.m_knowledegeManager.dependKnowledge(xarConfig.knowledges[i]);
-                            }
-                        }
-
-                        if(xarConfig.storages) {
-                            for(let i=0;i<xarConfig.storages.length;++i) {
-                                thisRuntime.enableRuntimeStorage(xarConfig.storages[i]);
-                            }
-                        }
-
-                        thisRuntime.m_knowledegeManager.ready(function() {
-                            if(thisRuntime.isXARPackageCanLoad(xarConfig,thisRuntime.m_id)) {
-
-                                let xarPackage = new XARPackage(xarConfig,thisRuntime);
-                                thisRuntime.m_packages[xarInfo] = xarPackage;
-
-                                xarPackage.state = XARPackage.XAR_STATE_RUNING;
-                                Repository.load(repositoryHost, thisRuntime.getOwnerApp().getID(),
-                                    "abc", "123", xarID, xarVersion, "onload.js", function(ret, resp){
-                                        if (!ret) {
-                                            thisRuntime.m_packages[xarInfo] = null;
-                                            onComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
-                                        } else {
-                                            let content = resp.content;
-                                            if(content) {
-                                                if(resp.type=='file'){
-                                                    if(!BaseLib.fileExistsSync(content)){
-                                                        onComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
-                                                    }else{
-                                                        content = fs.readFileSync(content);
-                                                    }
-                                                }
-
-                                                let scriptContent = "(function(_owp_) {let getCurrentPackage=function(){return _owp_;}; \n" + content +"\n})(xarConfig);";
-
-                                                let funcResult = eval(scriptContent);
-                                                BX_LOG("load package " + xarInfo + " ok.");
-                                                xarPackage.state = xarPackage.XAR_STATE_LOADED;
-                                                onComplete(xarPackage, funcResult);
-
-                                            } else {
-                                                onComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
-                                            }
-                                        }
-                                    });
                             } else {
-
-
-                                let proxyInfo = xarID + "_proxy";
-                                if (xarVersion != "") {
-                                    proxyInfo += "|";
-                                    proxyInfo += "xarVersion"
-                                }
-                                BX_LOG("can not load remote package:"+xarInfo+", load proxy package:"+proxyInfo);
-                                thisRuntime.loadXARPackage(proxyInfo, onComplete);
+                                onComplete(xarPackage, module);
                             }
                         });
-                        return;
+                    }else{
+                        if (!proxyLoaded) {
+                            proxyLoaded = true;
+                            let proxyInfo = xarID + "_proxy";
+                            if (xarVersion != "") {
+                                proxyInfo += "|";
+                                proxyInfo += "xarVersion"
+                            }
+                            BX_INFO("can not load remote package:"+xarInfo+", load proxy package:"+proxyInfo);
+                            thisRuntime.loadXARPackage(proxyInfo, onComplete);
+                        } else {
+                            onComplete(null,ErrorCode.RESULT_NOT_FOUND);
+                        }
                     }
                 });
+            });
         };
 
         tryLoad(0);
 
 
     }
-    createRuntimeOnDevice(deviceInfo,packageInfo,onComplete) {
+    selectDeviceCanCreateBUS() {
 
-        let postURL = schema + deviceInfo.InterfaceURL + "/runtimes/";
+        let deviceMap = getCurrentRuntime().getKnowledgeManager().getKnowledge("global.devices").mapGetClone();
+        let result = [];
+        let i = 0;
+        for(let did in deviceMap) {
+            let deviceInfo = deviceMap[did];
+            let thisDeviceOK = true;
+
+            if(BaseLib.isArrayContained(deviceInfo.ability,["wlan-interface","bus"])) {
+                result.push(deviceInfo);
+            }
+        }
+
+        if(result.length > 0) {
+            i = BaseLib.getRandomNum(0,result.length-1);
+            return result[i];
+        }
+        BX_ERROR("cann't select device for create bus");
+        return null;
+
+    }
+
+
+    createBUSOnDevice(deviceInfo,busID,onComplete){
+
+        let postURL = BaseLib.getUrlFromNodeInfo(deviceInfo) + "/bus/";
         let postBody = {};
         let thisRuntime = this;
 
         postBody.appID = this.m_app.getID();
+        postBody.busID = busID;
+        postBody.cmd = "resume";
+
+        BaseLib.postJSON(postURL,postBody,function (newBusInfo) {
+            onComplete(newBusInfo);
+        });
+
+        return true;
+    }
+
+    allocBUS(onComplete) {
+        this.scheduler.selectBus(function(ret,bus){
+            if(ret){
+                BX_INFO(bus);
+                onComplete(bus);
+            }else{
+                onComplete(null);
+                BX_ERROR("select bus from scheduler failed.");
+            }
+        });
+    }
+
+    createEvent(eventid,onComplete){
+        this.scheduler.selectEvent(eventid,function(ret,event){
+            if(ret){
+                BX_INFO(event);
+                onComplete(event);
+            }else{
+                onComplete(null);
+                BX_ERROR("select event from scheduler failed.");
+            }
+        });
+    }
+
+
+    createRuntimeOnDevice(deviceInfo,packageInfo,onComplete) {
+
+        let postURL = BaseLib.getUrlFromNodeInfo(deviceInfo) + "/runtimes/";
+        BX_INFO("will create runtime on " +deviceInfo.id + " postURL:",postURL);
+        let postBody = {};
+        let thisRuntime = this;
+
+        postBody.appid = this.m_app.getID();
         if(packageInfo.storages) {
 
             postBody.storages = packageInfo.storages;
@@ -2249,7 +3595,7 @@ class RuntimeInstance {
         BaseLib.postJSON(postURL,postBody,function (newRuntimeInfo) {
             BaseLib.setOnceTimer(function(){
 
-                thisRuntime.m_knowledegeManager.dependKnowledge("global.runtimes",{});
+                thisRuntime.m_knowledegeManager.dependKnowledge("global.runtimes",InfoNode.TYPE_MAP,{});
                 thisRuntime.m_knowledegeManager.ready(function() {
                     onComplete(newRuntimeInfo);
                 })
@@ -2262,9 +3608,9 @@ class RuntimeInstance {
     resumeRuntime(runtime,onComplete) {
         let knowledegePath = "global.devices";
         let deviceMap = getCurrentRuntime().getKnowledgeManager().getKnowledge(knowledegePath);
-        let deviceInfo = deviceMap.mapGet(runtime.OwnerDeviceID);
+        let deviceInfo = deviceMap.mapGet(runtime.ownerDeviceID);
         if(deviceInfo) {
-            let postURL = schema + deviceInfo.InterfaceURL + "/runtimes/";
+            let postURL = BaseLib.getUrlFromNodeInfo(deviceInfo) + "/runtimes/";
             let postBody = {};
 
             postBody.appID = this.m_app.getID();
@@ -2313,7 +3659,7 @@ class RuntimeInstance {
             let thisDeviceOK = true;
 
             if(deviceType) {
-                if(runtimeInfo.Type == deviceType) {
+                if(runtimeInfo.type == deviceType) {
                     thisDeviceOK = true;
                 } else {
                     thisDeviceOK = false;
@@ -2322,7 +3668,7 @@ class RuntimeInstance {
 
             if(thisDeviceOK) {
                 if(deviceAbility) {
-                    if(BaseLib.isArrayContained(runtimeInfo.Ability,deviceAbility)) {
+                    if(BaseLib.isArrayContained(runtimeInfo.ability,deviceAbility)) {
                         thisDeviceOK = true;
                     } else {
                         thisDeviceOK = false;
@@ -2334,7 +3680,7 @@ class RuntimeInstance {
                 if(packageInfo) {
                     if(packageInfo.drivers) {
                         if(packageInfo.drivers.length > 0) {
-                            if(BaseLib.isArrayContained(runtimeInfo.Drivers,packageInfo.drivers)) {
+                            if(BaseLib.isArrayContained(runtimeInfo.drivers,packageInfo.drivers)) {
                                 thisDeviceOK = true;
                             } else {
                                 thisDeviceOK = false;
@@ -2348,7 +3694,7 @@ class RuntimeInstance {
                 if(packageInfo) {
                     if(packageInfo.storages) {
                         if(packageInfo.storages.length > 0) {
-                            if(runtimeInfo.Ability.indexOf("storage") >= 0) {
+                            if(runtimeInfo.ability.indexOf("storage") >= 0) {
                                 thisDeviceOK = true;
                             } else {
                                 thisDeviceOK = false;
@@ -2366,15 +3712,18 @@ class RuntimeInstance {
         if(result.length > 0)
         {
 
-            let index = BaseLib.getRandomNum(0,result.length-1);
-            return result[index];
+            let i= BaseLib.getRandomNum(0,result.length-1);
+            return result[i];
         }
 
-        BX_LOG("ERROR! Cann't select valid runtime!");
+        BX_ERROR("ERROR! Cann't select valid runtime!");
         return null;
     }
 
+
+
     selectDeviceByFilter(deviceType,deviceAbility,packageInfo,deviceGroupID) {
+
         let knowledegePath = "";
         if(deviceGroupID) {
             knowledegePath = "global.devices." + deviceGroupID;
@@ -2383,12 +3732,13 @@ class RuntimeInstance {
         }
         let deviceMap = getCurrentRuntime().getKnowledgeManager().getKnowledge(knowledegePath).mapGetClone();
         let result = [];
+
         for(let did in deviceMap) {
             let deviceInfo = deviceMap[did];
             let thisDeviceOK = true;
 
             if(deviceType) {
-                if(deviceInfo.Type == deviceType) {
+                if(deviceInfo.type == deviceType) {
                     thisDeviceOK = true;
                 } else {
                     thisDeviceOK = false;
@@ -2397,7 +3747,7 @@ class RuntimeInstance {
 
             if(thisDeviceOK) {
                 if(deviceAbility) {
-                    if(BaseLib.isArrayContained(deviceInfo.Ability,deviceAbility)) {
+                    if(BaseLib.isArrayContained(deviceInfo.ability,deviceAbility)) {
                         thisDeviceOK = true;
                     } else {
                         thisDeviceOK = false;
@@ -2409,7 +3759,7 @@ class RuntimeInstance {
                 if(packageInfo) {
                     if(packageInfo.drivers) {
                         if(packageInfo.drivers.length > 0) {
-                            if(BaseLib.isArrayContained(deviceInfo.Drivers,packageInfo.drivers)) {
+                            if(BaseLib.isArrayContained(deviceInfo.drivers,packageInfo.drivers)) {
                                 thisDeviceOK = true;
                             } else {
                                 thisDeviceOK = false;
@@ -2423,7 +3773,7 @@ class RuntimeInstance {
                 if(packageInfo) {
                     if(packageInfo.storages) {
                         if(packageInfo.storages.length > 0) {
-                            if(deviceInfo.Ability.indexOf("storage") >= 0) {
+                            if(deviceInfo.ability.indexOf("storage") >= 0) {
                                 thisDeviceOK = true;
                             } else {
                                 thisDeviceOK = false;
@@ -2443,17 +3793,52 @@ class RuntimeInstance {
 
             let index = BaseLib.getRandomNum(0,result.length-1);
 
+            console.log('result:', result[index]);
             return result[index];
         } else {
 
         }
 
-        BX_LOG("ERROR! Cann't select valid device!");
+        BX_INFO("ERROR! Cann't select valid device!");
         return null;
     }
 
+    selectRuntimeByCachePath(cachePathList,deviceGroupID) {
+        let thisRuntime = this;
+        let knowledgePath = "";
+        if(deviceGroupID) {
+            knowledgePath = "global.caches." + deviceGroupID;
+        } else {
+            knowledgePath = "global.caches";
+        }
+
+        let bindInfo = thisRuntime.getKnowledgeManager().getKnowledge(knowledgePath);
+         if(bindInfo) {
+            let allMountInfo = bindInfo.mapGetClone();
+
+            let maxLen = -1;
+            let resultID = "";
+            for(let gPath in allMountInfo) {
+                if(cachePathList[0].indexOf(gPath) >= 0) {
+                    if(gPath.length > maxLen) {
+                        maxLen = gPath.length;
+                        resultID = allMountInfo[gPath].ID;
+                    }
+                }
+            }
+
+            if(maxLen > 0) {
+                return thisRuntime.getRuntimeInfo(resultID);
+            } else {
+                return null;
+            }
+        } else {
+            console.log("ERROR,cann't read knowledge:" + knowledgePath);
+        }
+    }
+
     selectRuntimeByStoragePath(storagePathList,deviceGroupID) {
-        let thisRuntime = getCurrentRuntime();
+        let thisRuntime = this;
         let knowledgePath = "";
         if(deviceGroupID) {
             knowledgePath = "global.storages." + deviceGroupID;
@@ -2470,15 +3855,14 @@ class RuntimeInstance {
             for(let gPath in allMountInfo) {
                 if(storagePathList[0].indexOf(gPath) >= 0) {
                     if(gPath.length > maxLen) {
-                        BX_LOG("find it");
+
                         maxLen = gPath.length;
-                        resultID = allMountInfo[gPath];
+                        resultID = allMountInfo[gPath].ID;
                     }
                 }
             }
 
             if(maxLen > 0) {
-                BX_LOG("get runtime:" + resultID);
                 return thisRuntime.getRuntimeInfo(resultID);
             } else {
                 return null;
@@ -2489,7 +3873,10 @@ class RuntimeInstance {
     }
 
     selectTargetRuntime(packageID,packageInfo,selectKey,onComplete) {
-        BX_LOG("selectTargetRuntime packageID:" + packageID + " packageInfo.version:" + packageInfo.version + " selectKey:" + selectKey);
+        BX_INFO("selectTargetRuntime packageID:" + packageID
+            + " packageInfo.version:" + packageInfo.version
+            + " selectKey:" + selectKey
+        );
 
         let thisRuntime = getCurrentRuntime();
         let ruleInfo = thisRuntime.getKnowledgeManager().getKnowledge("global.loadrules");
@@ -2498,9 +3885,10 @@ class RuntimeInstance {
         if(ruleInfo) {
             module_rule = ruleInfo.objectRead();
         } else {
-            BX_LOG("cann't read global.loadrules");
+            BX_INFO("cann't read global.loadrules");
             onComplete(null);
         }
+
 
 
         let deviceGroupID = null;
@@ -2522,68 +3910,45 @@ class RuntimeInstance {
             }
         }
 
+        let deveiceInfo = {
+            "devicegroupid":deviceGroupID,
+            "devicetype":deviceType,
+            "deviceability":deviceAbility
+        };
+
+        let resultRuntime = null;
+
+
         let storagePathList = packageInfo.storages;
-        if(storagePathList) {
-            if(storagePathList.length > 0) {
-                let resultRuntime = thisRuntime.selectRuntimeByStoragePath(storagePathList,deviceGroupID);
-                if(resultRuntime) {
+        if(storagePathList && storagePathList.length > 0) {
+            resultRuntime = thisRuntime.selectRuntimeByStoragePath(storagePathList,deviceGroupID);
+        }else{
+            resultRuntime = thisRuntime.selectRuntimeByFilter(deviceType,deviceAbility,packageInfo,deviceGroupID);
+        }
 
-                    BX_LOG("select runtime by storagepath return:" + resultRuntime.ID);
-                    if(!resultRuntime.IsOnline ) {
-                        thisRuntime.resumeRuntime(resultRuntime,function(resultRuntime) {
-                            onComplete(resultRuntime);
-                        })
-                    } else {
-                        onComplete(resultRuntime);
-                    }
-                } else {
 
-                    let deviceInfo = thisRuntime.selectDeviceByFilter(deviceType,deviceAbility,packageInfo,deviceGroupID);
-                    if(deviceInfo) {
-                        thisRuntime.createRuntimeOnDevice(deviceInfo,packageInfo,function(newRuntime) {
 
-                            let knowledgePath = "";
-                            if(deviceGroupID) {
-                                knowledgePath = "global.storages." + deviceGroupID;
-                            } else {
-                                knowledgePath = "global.storages";
-                            }
-
-                            let bindInfo = thisRuntime.getKnowledgeManager().getKnowledge(knowledgePath);
-                            for(let i=0;i<storagePathList.length;++i) {
-                                bindInfo.mapSet(storagePathList[i],newRuntime.ID);
-                                BX_LOG("bind " + storagePathList[i] + " -> " + newRuntime.ID);
-                            }
-                            onComplete(newRuntime);
-                        });
-                    } else {
-                        console.log("cann't select device,need add new device!");
-                    }
-                }
+        if(resultRuntime) {
+            BX_INFO("select runtime by storagepath return:" + resultRuntime.id);
+            if(!resultRuntime.isOnline ) {
+                thisRuntime.resumeRuntime(resultRuntime,function(resultRuntime) {
+                    onComplete(resultRuntime);
+                });
+            } else {
+                onComplete(resultRuntime);
             }
         } else {
-            let resultRuntime = thisRuntime.selectRuntimeByFilter(deviceType,deviceAbility,packageInfo,deviceGroupID);
-            if(resultRuntime) {
-                if(!resultRuntime.IsOnline ) {
-                    thisRuntime.resumeRuntime(resultRuntime,function(resultRuntime) {
-                        onComplete(resultRuntime);
-                    })
-                } else {
-                    onComplete(resultRuntime);
+            this.scheduler.selectRuntime(packageInfo,deveiceInfo,function(ret,runtime){
+                if(ret){
+                    onComplete(runtime);
+                    BX_INFO(runtime);
+                }else{
+                    BX_ERROR("select runtime from scheduler failed.");
                 }
-            } else {
-
-                let deviceInfo = thisRuntime.selectDeviceByFilter(deviceType,deviceAbility,packageInfo,deviceGroupID);
-                if(deviceInfo) {
-                    thisRuntime.createRuntimeOnDevice(deviceInfo,packageInfo,function(newRuntime) {
-                        onComplete(newRuntime);
-                    });
-                } else {
-                    console.log("cann't select device,need add new device!");
-                }
-            }
+            });
         }
-        return ;
+
+        return;
     }
 
 
@@ -2608,7 +3973,9 @@ class RuntimeInstance {
 
 
 
-        let postURL = schema + remoteRuntimeInfo.PostURL+"/rpc";
+        let thisRuntime = this;
+        let postURL = BaseLib.getUrlFromNodeInfo(remoteRuntimeInfo)+"/rpc";
+        console.log("postRPCCall=>" + postURL);
         let postBody = {};
         postBody.seq = BaseLib.createGUID();
         postBody.src = this.m_id;
@@ -2616,20 +3983,36 @@ class RuntimeInstance {
         postBody.function_name = functionname;
         postBody.trace_id = traceID;
         postBody.args = BaseLib.encodeParamAsJson(args);
+        postBody.knowledges = this.m_knowledegeManager.getDependsKnowledgeInfo();
 
-        BaseLib.postJSONCall(postURL,postBody,onComplete);
+        BaseLib.postJSONCall(postURL,postBody,function(result,errorCode,respBody) {
+            if(errorCode == ErrorCode.RESULT_NEED_SYNC) {
+                BX_INFO("knowledge not sync,need sync before RPC.");
+                for(let k in respBody.knowledges) {
+                    let thisInfo = thisRuntime.m_knowledegeManager.getKnowledge(k);
+                    thisRuntime.m_knowledegeManager.dependKnowledge(k,thisInfo.getType(),null);
+                }
+                thisRuntime.m_knowledegeManager.ready(function() {
+                    BX_INFO("knowledge synced,auto retry RPC");
+                    thisRuntime.postRPCCall(remoteRuntimeInfo,functionname,args,traceID,onComplete);
+                });
+            } else {
+                onComplete(result,errorCode);
+            }
+        });
     }
 }
 
 
 class DeviceInfo {
     constructor(deviceID) {
-        this.DeviceID = deviceID;
-        this.InterfaceURL = "";
-        this.IsOnline = false;
-        this.Ability = [];
-        this.Drivers = [];
-        this.Type = "";
+        this.id = deviceID;
+        this.category = "device";
+        this.addr = [];
+        this.isOnline = false;
+        this.ability = [];
+        this.drivers = [];
+        this.type = "";
     }
 
     static getDeviceInfo(deviceID,onComplete) {
@@ -2643,60 +4026,75 @@ class Device {
         this.m_id = deviceID;
         this.m_token = "";
 
-        this.m_type = "";
+        this.m_category = "device";
         this.m_ability = [];
-        this.m_drivers = [];
-        this.m_interfaceURL = "";
-        this.m_innerURL = "";
+        this.m_drivers = {};
+        this.addr = [];
+        this.meta ={};
 
-        this.meta = {};
         this.m_ownerUserID = "";
         this.m_ownerUserToken = "";
-        this.m_ownerApps = {};
+        this.m_logHost = "";
+
+        this.m_knowledgeServerInfo = null;
+        this.m_repositoryServerInfo = null;
+        this.m_schedulerServerInfo = null;
+        this.m_caServerInfo = null;
+        this.m_loginServerInfo = null;
     }
 
     getDeviceID() {
         return this.m_id;
     }
 
+    setDeviceID(id) {
+        let oldid = this.m_id;
+        this.m_id = id;
+        return oldid;
+    }
+
     getAppHost(appid) {
-        if(this.m_ownerApps) {
-            try {
-                let result = this.m_ownerApps[appid];
-                if (result) {
-                    return result.appHost;
-                }
-            }catch(err) {
+        return this.m_apphost;
+    }
 
-            }
+    getSchedulerHost(appid) {
+        if(this.m_schedulerServerInfo) {
+            return BaseLib.getUrlFromNodeInfo(this.m_schedulerServerInfo);
         }
-        return this.m_ownerAppHost;
+        return null;
     }
 
-
-    getAppRepositoryHost(appid) {
-        if(this.m_ownerApps) {
-            try {
-                let result = this.m_ownerApps[appid];
-                if (result) {
-                    return result.repositoryHost;
-                }
-            }catch(err) {
-
-            }
+    getRepositoryServerHost(appid) {
+        if(this.m_repositoryServerInfo) {
+            return BaseLib.getUrlFromNodeInfo(this.m_repositoryServerInfo);
         }
-        return this.m_ownerRepositoryHost;
+        return null;
     }
 
-    getOwnerAppHost() {
-        return this.m_owerAppHost;
+    getKnowledgeServerHost(appid) {
+        if(this.m_knowledgeServerInfo) {
+            return BaseLib.getUrlFromNodeInfo(this.m_knowledgeServerInfo);
+        }
+        return null;
     }
 
-
-    getInterfaceURL() {
-        return this.m_interfaceURL;
+    getCaServerHost() {
+        if(this.m_caServerInfo) {
+            return BaseLib.getUrlFromNodeInfo(this.m_caServerInfo);
+        }
+        return null;
     }
 
+    getLoginServerHost() {
+        if(this.m_loginServerInfo) {
+            return BaseLib.getUrlFromNodeInfo(this.m_loginServerInfo);
+        }
+        return null;
+    }
+
+    getLogHost() {
+        return this.m_logHost;
+    }
     getAbility() {
         return this.m_ability;
     }
@@ -2738,21 +4136,24 @@ class Device {
     }
     loadFromConfig(configInfo) {
 
-        this.m_id = configInfo.device_id;
         this.m_token = configInfo.device_token;
 
-        this.m_interfaceURL = configInfo.device_interface+"/"+configInfo.device_id+"/";
+        let baseInfo = configInfo.device_info;
 
+        this.m_id = baseInfo.id;
+
+
+        this.m_type = baseInfo.type;
+        this.m_ability = baseInfo.ability;
+
+        this.m_drivers = baseInfo.drivers;
+        this.m_addr = baseInfo.addr;
+
+
+        this.m_ownerApps = configInfo.owner_apps;
+        this.m_apphost = configInfo.app_host;
 
         this.meta = configInfo.meta;
-
-        this.m_type = configInfo.device_type;
-        this.m_ability = configInfo.device_ability;
-
-        this.m_drivers = configInfo.drivers;
-
-        this.m_ownerAppHost = configInfo.owner_apphost;
-        this.m_ownerApps = configInfo.owner_apps;
 
         this.m_runtimeRootDir = configInfo.runtime_root_dir;
 
@@ -2761,16 +4162,31 @@ class Device {
 
         this.m_ownerUserID = configInfo.owner.user_id;
         this.m_ownerUserToken = configInfo.owner.user_token;
+
+        this.m_knowledgeServerInfo = configInfo.knowledge_server_info;
+        this.m_repositoryServerInfo = configInfo.repository_server_info;
+        this.m_schedulerServerInfo = configInfo.scheduler_server_info;
+        this.m_caServerInfo = configInfo.ca_server_info;
+        this.m_loginServerInfo = configInfo.login_server_info;
+        if (configInfo.log_host) {
+            this.m_logHost = configInfo.log_host;
+        } else {
+            this.m_logHost = "";
+        }
+
         return ErrorCode.RESULT_OK;
     }
 
     createDeviceInfo() {
         let result = new DeviceInfo(this.m_id);
-        result.InterfaceURL = this.m_interfaceURL;
-        result.IsOnline = true;
-        result.Ability = this.m_ability.slice(0);
-        result.Drivers = this.m_drivers;
-        result.Type = this.m_type;
+        result.isOnline = true;
+        result.ability = this.m_ability.slice(0);
+        result.drivers = this.m_drivers;
+        result.type = this.m_type;
+        result.category = "device";
+
+
+
         return result;
     }
 
@@ -2809,143 +4225,685 @@ class OwnerUser {
 
 
 
-class GlobalEventManager {
 
-    isEventCreated(eventID) {
-        let ri = getCurrentRuntime();
-        let eventInfo = ri.getKnowledgeManager().getKnowledge("global.events");
-        if(eventInfo) {
-            let eventObj = eventInfo.mapGet(eventID);
-            if(eventObj) {
-                return ErrorCode.RESULT_OK;
-            } else {
-                return ErrorCode.RESULT_NOT_FOUND;
-            }
-        } else {
-            BX_LOG("global event root object is not exist,MUST create this node!!!");
-            return ErrorCode.RESULT_UNKNOWN;
-        }
+
+
+class WSReqList {
+    constructor() {
+        this.m_reqlist = {};
+        this.m_seq = 16;
     }
 
-    attach(eventID,funcName,runtimeID,options,onComplete) {
-        let ri = getCurrentRuntime();
-        let eventInfo = ri.getKnowledgeManager().getKnowledge("global.events");
-
-        if(eventInfo) {
-            let eventObject = eventInfo.mapGet(eventID);
-            if(eventObject) {
-                eventObject.listeners[funcName] = {"from":getCurrentRuntime().getInstanceID()};
-
-                eventInfo.mapSet(eventID,eventObject,function() {
-                    onComplete();
-                    BX_LOG("func:" + funcName + " attach to event:" + eventID + " OK.");
-                });
-
-            } else {
-                BX_LOG("cann't read event info,eventID:" + eventID);
-            }
-        } else {
-            BX_LOG("cann't read event info,eventID:" + eventID);
+    Create(op, OnResponse) {
+        const seq = this.m_seq++;
+        const req = {
+            "op": op,
+            "seq": seq,
+        };
+        const item = {
+            "tick": new Date(),
+            "resp": OnResponse,
         }
+
+        assert(!this.m_reqlist[seq]);
+        this.m_reqlist[seq] = item;
+        return req;
     }
 
-    remove(eventID,funcName,options,onComplete) {
-        let ri = getCurrentRuntime();
-        let eventInfo = ri.getKnowledgeManager().getKnowledge("global.events");
-
-        if(eventInfo) {
-            let eventObject = eventInfo.mapGet(eventID);
-            if(eventObject) {
-                if(eventObject.listeners[funcName]) {
-                    delete eventObj.listeners[funcName];
-
-                    eventInfo.mapSet(eventID, eventObject, function () {
-                        onComplete();
-                        BX_LOG("func:" + funcName + " remove from event:" + eventID + " OK.");
-                    });
-                } else {
-                    BX_LOG("func:" + funcName + " not attched to event:" + eventID);
-                }
-
-            } else {
-                BX_LOG("cann't read event info,eventID:" + eventName);
+    OnRecvResponse(cmd) {
+        assert(cmd.seq);
+        const item = this.m_reqlist[cmd.seq];
+        if (item) {
+            if (item.resp) {
+                item.resp(cmd);
             }
-        } else {
-            BX_LOG("cann't read event info,eventID:" + eventName);
+
+            delete this.m_reqlist[cmd.seq];
         }
-    }
-
-    createEvent(eventID,onComplete) {
-        let ri = getCurrentRuntime();
-        let eventInfo = ri.getKnowledgeManager().getKnowledge("global.events" );
-        if(eventInfo) {
-            let eventObj = eventInfo.mapGet(eventID);
-
-            if(eventObj) {
-                BX_LOG("cann't create event,eventID:" + eventID);
-                return ErrorCode.RESULT_ALREADY_EXIST;
-            } else {
-                let eventObj = {};
-                eventObj.ID = eventID;
-                eventObj.listeners = {};
-                eventInfo.mapSet(eventID,eventObj,function () {
-
-                    BX_LOG("event " + eventID + " created.")
-                    onComplete(ErrorCode.RESULT_OK);
-                });
-
-                return ErrorCode.RESULT_OK;
-            }
-        } else {
-            BX_LOG("global event root object is not exist,MUST create this node!!!");
-            return ErrorCode.RESULT_UNKNOWN;
-        }
-    }
-
-    removeEvent(eventID) {
-        let ri = getCurrentRuntime();
-        let eventInfo = ri.getKnowledgeManager().getKnowledge("global.events" );
-        if(eventInfo) {
-            let eventObj = eventInfo.mapGet(eventID);
-
-            if(eventObj) {
-                eventObj.mapSet(eventID,null);
-                BX_LOG("event " + eventID + " removed.");
-                return ErrorCode.RESULT_OK;
-            } else {
-                return ErrorCode.RESULT_NOT_FOUND;
-            }
-        } else {
-            BX_LOG("global event root object is not exist,MUST create this node!!!");
-            return ErrorCode.RESULT_UNKNOWN;
-        }
-    }
-
-    fireEvent(eventID,params,options) {
-        let ri = getCurrentRuntime();
-        let eventInfo = ri.getKnowledgeManager().getKnowledge("global.events");
-        if(eventInfo) {
-            let eventObj = eventInfo.mapGet(eventID);
-            if(eventObj) {
-                for(let functionName in eventObj.listeners) {
-                    ri.callFunc(functionName,params,null,"",function(){});
-                }
-            }
-        } else {
-            BX_LOG("cann't read event info,eventID:" + eventName);
-        }
-    }
-
-    static getInstance() {
-        if(GlobalEventManager.s_theOne == null) {
-            GlobalEventManager.s_theOne = new GlobalEventManager();
-        }
-
-        return GlobalEventManager.s_theOne;
     }
 }
 
-GlobalEventManager.s_theOne = null;
+
+
+
+class WebSocketClient {
+    constructor(id, type, addr) {
+        this.m_id = id;
+        this.m_type = type;
+        this.m_addr = addr;
+        assert(type === "device" || type === "runtime");
+        assert(this.m_addr);
+
+        this.m_reqlist = new WSReqList();
+        this.m_opened = false;
+        this.onopen = null;
+        this.onclose = null;
+    }
+
+    _send(reqString) {
+        BX_INFO("websocket will send:" + reqString);
+
+
+
+
+
+
+
+    }
+
+    GetID() {
+        return this.m_id;
+    }
+
+    Start() {
+        assert(!this.m_opened);
+        BX_INFO("will start webscoket to:" + this.m_addr);
+        let This = this;
+    }
+
+
+    Register(eventList, OnComplete) {
+        const req = this.m_reqlist.Create("register", function(resp) {
+            if (OnComplete) {
+                OnComplete(resp.ret);
+            }
+        });
+        req.id = this.m_id;
+        req.ctype = this.m_type;
+
+        if (eventList) {
+            assert(eventList instanceof Array);
+            req.eventlist = eventList;
+        }
+
+        const reqString = JSON.stringify(req);
+
+        this._send(reqString);
+    }
+
+
+
+
+    GetClientList(ctype, OnComplete) {
+        const req = this.m_reqlist.Create("get_list", function(resp) {
+            if (OnComplete) {
+                let list = [];
+                if (resp.ret === 0) {
+                    list = resp.list;
+                }
+
+                OnComplete(resp.ret, list);
+            }
+        });
+
+        req.id = this.m_id;
+        req.ctype = ctype;
+
+        const reqString = JSON.stringify(req);
+        this._send(reqString);
+    }
+
+
+    CreateEvent(id, option, OnComplete) {
+        const req = this.m_reqlist.Create("new_event", function(resp) {
+            if (OnComplete) {
+                OnComplete(resp.ret);
+            }
+        });
+        req.id = id;
+        if (option) {
+            req.option = option;
+        }
+
+        const reqString = JSON.stringify(req);
+        this._send(reqString);
+    }
+
+
+    DeleteEvent(id, OnComplete) {
+        const req = this.m_reqlist.Create("delete_event", function(resp) {
+            if (OnComplete) {
+                OnComplete(resp.ret);
+            }
+        });
+        req.id = id;
+
+        const reqString = JSON.stringify(req);
+        this._send(reqString);
+    }
+
+
+    AttachEvent(id, OnComplete) {
+        const req = this.m_reqlist.Create("attach_event", function(resp) {
+            if (OnComplete) {
+                OnComplete(resp.ret);
+            }
+        });
+        req.id = id;
+        req.src_id = this.m_id;
+
+        const reqString = JSON.stringify(req);
+        this._send(reqString);
+    }
+
+
+    DetachEvent(id, OnComplete) {
+        const req = this.m_reqlist.Create("detach_event", function(resp) {
+            if (OnComplete) {
+                OnComplete(resp.ret);
+            }
+        });
+        req.id = id;
+        req.src_id = this.m_id;
+
+        const reqString = JSON.stringify(req);
+        this._send(reqString);
+    }
+
+
+
+    ActiveEvent(id, param, OnComplete) {
+        const req = this.m_reqlist.Create("active_event", function(resp) {
+            if (OnComplete) {
+                OnComplete(resp.ret);
+            }
+        });
+        req.id = id;
+        req.param = param;
+        req.src_id = this.m_id;
+
+        const reqString = JSON.stringify(req);
+        this._send(reqString);
+    }
+
+
+    ChainBus(id, busAddress, OnComplete) {
+        const req = this.m_reqlist.Create("chain", function(resp) {
+            if (OnComplete) {
+                OnComplete(resp.ret);
+            }
+        });
+        req.id = id;
+        req.addr = busAddress;
+
+        const reqString = JSON.stringify(req);
+        this._send(reqString);
+    }
+
+    UnChainBus(id, OnComplete) {
+        const req = this.m_reqlist.Create("unchain", function(resp) {
+            if (OnComplete) {
+                OnComplete(resp.ret);
+            }
+        });
+        req.id = id;
+
+        const reqString = JSON.stringify(req);
+        this._send(reqString);
+    }
+
+    _OnOpen() {
+        assert(!this.m_opened);
+        this.m_opened = true;
+        if (this.onopen) {
+            this.onopen();
+        }
+    }
+
+    _OnClose() {
+
+        this.m_opened = false;
+        if (this.onclose) {
+            this.onclose();
+        }
+    }
+
+    _OnMessage(data) {
+        BX_INFO("recv from webscoket :" + data);
+        const cmd = JSON.parse(data);
+        if (cmd) {
+            if (cmd.op === "onactive") {
+                this._OnEvent(cmd);
+            } else {
+                this.m_reqlist.OnRecvResponse(cmd);
+            }
+        } else {
+            console.log("recv invalid message:", data);
+        }
+    }
+
+    _OnEvent(cmd) {
+        if (this.onactive) {
+            this.onactive(cmd.id, cmd.src_id, cmd.param);
+        }
+    }
+}
+
+class GlobalEventManager {
+    constructor(km) {
+        this._km = km;
+        this._busClients = {};
+        this._busClientByEventID = {};
+        this._listeners = {};
+        this._cookie = 1024;
+    }
+
+    _getBUSClient(busID,eventID,onComplete) {
+        let result = this._busClients[busID];
+        let This = this;
+        if(result) {
+            onComplete(result,ErrorCode.RESULT_OK);
+        } else {
+            This._km.dependKnowledge("global.buses",1);
+
+            This._km.ready(function() {
+                let kInfo = This._km.getKnowledge("global.buses");
+                if(kInfo) {
+                    let busInfo = kInfo.mapGet(busID);
+                    if(busInfo) {
+                        let clientInfo = {};
+                        let busURL = BaseLib.getUrlFromNodeInfo(busInfo);
+                        BX_INFO("create bus to :" + busURL);
+
+                        clientInfo.client = new WebSocketClient(getCurrentRuntime().getID(), "runtime", busURL);
+                        clientInfo.isAttach = false;
+                        function onClientOpen() {
+                            clientInfo.client.Register(null,function() {
+                                This._busClients[busID]= clientInfo.client;
+                                This._busClientByEventID[eventID] = clientInfo;
+
+                                BX_INFO("websocket client connected.");
+                                onComplete(clientInfo.client,ErrorCode.RESULT_OK);
+                            });
+
+                        }
+
+                        function onClientActive(eventid, srcid, param) {
+                            BX_INFO("bus client onactive:", eventid, srcid, param);
+                            This._onBUSActive(eventID,eventid, srcid, param);
+                        };
+
+                        function onClientClose(){
+                            BX_WARN("bus client break.")
+                            delete This._busClientByEventID[eventID];
+                        }
+
+                        clientInfo.client.onopen = onClientOpen;
+                        clientInfo.client.onactive = onClientActive;
+                        clientInfo.client.onclose = onClientClose;
+                        clientInfo.client.Start();
+                        return;
+                    } else {
+                        BX_ERROR("Cann't get bus info. create busClient failed." + busID);
+                        onComplete(null,ErrorCode.RESULT_NOT_FOUND);
+                    }
+                } else {
+                    BX_ERROR("Cann't get bus global.buses. create busClient failed." + busID);
+                    onComplete(null,ErrorCode.RESULT_UNKNOWN);
+                }
+            });
+        }
+    }
+
+
+
+
+
+    _onBUSActive(eventID,eventid, srcid, param) {
+        let trueEventID = eventID;
+        BX_TRACE(eventID + "active:" + srcid + "," + param);
+        if(eventid == "registerClient" || eventid == "unregisterClient") {
+            trueEventID = eventID + "_listenerChanged" ;
+        }
+
+        let listeners = this._listeners[trueEventID];
+        if(listeners) {
+            for(let i=0;i<listeners.length;++i) {
+                let listener = listeners[i];
+                listener.func(param);
+            }
+        }
+    }
+
+    _attachInnerListener(eventID,func) {
+        let listeners = this._listeners[eventID];
+        if(listeners == null) {
+            listeners = new Array();
+            this._listeners[eventID] = listeners;
+        }
+        this._cookie = this._cookie + 1;
+        let listener = {};
+        listener.cookie = this._cookie;
+        listener.func = func;
+        listeners.push(listener);
+        return listener.cookie;
+    }
+
+    _detachInnerListener(eventID,cookie) {
+        let listeners = this._listeners[eventID];
+        if(listeners == null) {
+            return null;
+        }
+        for(let i=0;i<listeners.length;++i) {
+            if(listeners[i].cookie == cookie) {
+                listener.splice(i,1);
+                return listeners;
+            }
+        }
+        return listeners;
+    }
+
+    isEventCreated(eventID) {
+        console.log("isEventCreated?")
+
+        let eventInfo = this._km.getKnowledge("global.events");
+        if(eventInfo) {
+            let eventObj = eventInfo.mapGet(eventID);
+            if(eventObj) {
+                return ErrorCode.RESULT_OK;
+            } else {
+                return ErrorCode.RESULT_NOT_FOUND;
+            }
+        } else {
+            BX_ERROR("global event root object is not exist,MUST create this node!!!");
+            return ErrorCode.RESULT_UNKNOWN;
+        }
+    }
+
+
+    attach(eventID,func,onComplete) {
+        let This = this;
+        let busClient = null;
+        let clientInfo = This._busClientByEventID[eventID];
+        if(clientInfo) {
+            busClient = clientInfo.client;
+        }
+        let attachResult = ErrorCode.RESULT_NOT_FOUND;
+
+        if(busClient == null) {
+            This._km.dependKnowledge("global.events",1);
+            This._km.ready(function(){
+                let eventInfo = This._km.getKnowledge("global.events");
+                if(eventInfo) {
+
+                    let eventObject = eventInfo.mapGet(eventID);
+                    if(eventObject) {
+
+                        This._getBUSClient(eventObject.busID,eventID,function(busClient,result) {
+
+                            if(result == ErrorCode.RESULT_OK) {
+
+                                busClient.AttachEvent(eventID,function(ret) {;
+                                    if(ret == 0) {
+                                        This._busClientByEventID[eventID].isAttach = true;
+                                        let cookie = This._attachInnerListener(eventID,func);
+                                        onComplete(ErrorCode.RESULT_OK,cookie);
+                                    } else {
+                                        onComplete(ret,0);
+                                    }
+                                });
+                            } else {
+                                BX_WARN("cann't get bus client.eventID:" + eventID);
+                                onComplete(result,0);
+                            }
+                        });
+                        return;
+                    } else {
+                        BX_WARN("cann't read event object,eventID:" + eventID);
+                    }
+                } else {
+                    BX_WARN("cann't read event info,eventID:" + eventID);
+                }
+            });
+            return;
+        } else {
+            busClient.AttachEvent(eventID,function(ret) {
+                if(ret == 0) {
+                    let cookie = This._attachInnerListener(eventID,func);
+                    onComplete(ErrorCode.RESULT_OK,cookie);
+                } else {
+                    onComplete(ret,0);
+                }
+            });
+            return;
+        }
+
+
+    }
+
+    detach(eventID,cookie) {
+        let This = this;
+        let listener = This._detachInnerListener(eventID,cookie);
+        if(listener == null) {
+            return ErrorCode.RESULT_NOT_FOUND;
+        }
+
+        if(listener.length < 1) {
+            delete This._listeners[eventID];
+
+            let busClient = null;
+            let clientInfo = This._busClientByEventID[eventID];
+            if(clientInfo) {
+                busClient = clientInfo.client;
+            }
+            if(busClient) {
+                busClient.DetachEvent(eventID,function() {});
+                delete This._busClientByEventID[eventID];
+                delete This._busClients[busClient.GetID()];
+            } else {
+                BX_WARN("Cann't found busClient?");
+            }
+        }
+        return ErrorCode.RESULT_OK;
+    }
+
+    attachListenerChanged(eventID,func,onComplete) {
+        let This = this;
+
+        let busClient = null;
+        let clientInfo = This._busClientByEventID[eventID];
+        if(clientInfo) {
+            busClient = clientInfo.client;
+        }
+        let attachResult = ErrorCode.RESULT_NOT_FOUND;
+
+        if(busClient == null) {
+            let eventInfo = this._km.getKnowledge("global.events");
+            if(eventInfo) {
+                let eventObject = eventInfo.mapGet(eventID);
+                if(eventObject) {
+                    This._getBUSClient(eventObject.busID,eventID,function(busClient,result) {
+                        if(result == ErrorCode.RESULT_OK) {
+                            busClient.AttachEvent("registerClient",function(){
+                                busClient.AttachEvent("unregisterClient",function(){});
+                            });
+
+                            let cookie = This._attachInnerListener(eventID+"_listenerChanged",func);
+                            onComplete(ErrorCode.RESULT_OK,cookie);
+                        } else {
+                            onComplete(result,0);
+                        }
+                    });
+                    return;
+                }
+            } else {
+                BX_WARN("cann't read event info,eventID:" + eventID);
+            }
+        } else {
+            busClient.AttachEvent("registerClient",function(){
+                busClient.AttachEvent("unregisterClient",function(){});
+            });
+
+            let cookie = This._attachInnerListener(eventID+"_listenerChanged",func);
+            onComplete(ErrorCode.RESULT_OK,cookie);
+            return;
+        }
+
+        onComplete(attachResult,0);
+    }
+
+    detachListenerChanged(eventID,cookie) {
+        let This = this;
+        let listener = This._detachInnerListener(eventID+"_listenerChanged",cookie);
+        if(listener == null) {
+            return ErrorCode.RESULT_NOT_FOUND;
+        }
+
+        if(listener.length < 1) {
+            delete This._listeners[eventID];
+            let busClient = null;
+            let clientInfo = This._busClientByEventID[eventID];
+            if(clientInfo) {
+                busClient = clientInfo.client;
+            }
+            if(busClient) {
+                busClient.DetachEvent("registerClient",function(){});
+                busClient.DetachEvent("unregisterClient",function(){});
+                delete This._busClientByEventID[eventID];
+                delete This._busClients[busClient.GetID()];
+            } else {
+                BX_WARN("Cann't found busClient?");
+            }
+        }
+        return ErrorCode.RESULT_OK;
+    }
+
+    getListenerList(eventID,onComplete) {
+        let This = this;
+        let busClient = null;
+        let clientInfo = This._busClientByEventID[eventID];
+        if(clientInfo) {
+            busClient = clientInfo.client;
+        }
+        let attachResult = ErrorCode.RESULT_NOT_FOUND;
+
+        if(busClient == null) {
+            let eventInfo = this._km.getKnowledge("global.events");
+            if(eventInfo) {
+                let eventObject = eventInfo.mapGet(eventID);
+                if(eventObject) {
+                    This._getBUSClient(eventObject.busID,eventID,function(busClient,result) {
+                        if(result == ErrorCode.RESULT_OK) {
+                            busClient.GetClientList("runtime",onComplete);
+                        } else {
+                             onComplete(result,null);
+                        }
+                    });
+                    return;
+                }
+            } else {
+                BX_WARN("cann't read event info,eventID:" + eventID);
+            }
+        } else {
+            busClient.GetClientList("runtime",onComplete);
+            return;
+        }
+    }
+
+    fireEvent(eventID,params) {
+
+        let This = this;
+        let busClient = null;
+        let clientInfo = This._busClientByEventID[eventID];
+        if(clientInfo) {
+            busClient = clientInfo.client;
+        }
+
+        if(busClient == null) {
+            let eventInfo = this._km.getKnowledge("global.events");
+            if(eventInfo) {
+                let eventObj = eventInfo.mapGet(eventID);
+                if(eventObj) {
+                    this._getBUSClient(eventObj.busID,eventID,function(busClient,result) {
+                            if(result == ErrorCode.RESULT_OK) {
+                                busClient.ActiveEvent(eventID,params);
+                            }
+                    });
+                }
+            } else {
+                BX_WARN("cann't read event info,eventID:" + eventName);
+            }
+        } else {
+            busClient.ActiveEvent(eventID,params,function(ret) {
+                BX_TRACE("Active Event "+ eventID + " return " + ret);
+            });
+        }
+    }
+
+
+
+    createEvent(eventID,onComplete) {
+
+
+
+
+        let thisKM = this._km;
+        let thisRuntime = getCurrentRuntime();
+        let This = this;
+
+        let createEventById = function(){
+            thisRuntime.createEvent(eventID,function(newEventInfo){
+                if(newEventInfo){
+                    onComplete(ErrorCode.RESULT_OK);
+                }else{
+                    onComplete(ErrorCode.RESULT_UNKNOWN);
+                }
+            });
+        };
+
+        let eventInfo = thisKM.getKnowledge("global.events" );
+        if(eventInfo) {
+            let eventObj = eventInfo.mapGet(eventID);
+            if(eventObj) {
+                thisKM.dependKnowledge("global.buses",1);
+                thisKM.ready(function() {
+                    let kInfo = This._km.getKnowledge("global.buses");
+                    let exist = false;
+                    if(kInfo && kInfo.mapGet(eventObj.busID)){
+                        exist = true;
+                    }
+
+                    if(exist) {
+                        BX_ERROR("event aleady exist,eventID:" + eventID);
+                        onComplete(ErrorCode.RESULT_ALREADY_EXIST);
+                    }else{
+                        BX_ERROR("event exist, but bus miss, recreate event,eventID:" + eventID);
+                        createEventById();
+                    }
+                });
+            } else {
+                createEventById();
+            }
+        } else {
+            BX_ERROR("global event root object is not exist,MUST create this node!!!");
+            return onComplete(ErrorCode.RESULT_UNKNOWN);
+        }
+    }
+
+    removeEvent(eventID,onComplete) {
+        let eventInfo = this._km.getKnowledge("global.events");
+        if(eventInfo) {
+            let eventObj = eventInfo.mapGet(eventID);
+            if(eventObj) {
+
+
+                eventObj.mapSet(eventID,function(result) {
+                    if(result == ErrorCode.RESULT_OK) {
+                        BX_INFO("event " + eventID + " removed.");
+                        onComplete(ErrorCode.RESULT_OK);
+                    }
+                });
+
+            } else {
+                onComplete(ErrorCode.RESULT_NOT_FOUND);
+            }
+        } else {
+            BX_ERROR("global event root object is not exist,MUST create this node!!!");
+            onComplete(ErrorCode.RESULT_UNKNOWN);
+        }
+    }
+}
+
 
 
 
@@ -2958,21 +4916,40 @@ module.exports.BX_WARN = BX_WARN;
 module.exports.BX_DEBUG = BX_DEBUG;
 module.exports.BX_ERROR = BX_ERROR;
 module.exports.BX_CHECK = BX_CHECK;
+module.exports.BX_INFO = BX_INFO;
+module.exports.BX_ERROR = BX_ERROR;
 module.exports.Application = Application;
 module.exports.getCurrentRuntime = getCurrentRuntime;
 module.exports.getCurrentApp = getCurrentApp;
 module.exports.XARPackage = XARPackage;
 module.exports.RuntimeInstance = RuntimeInstance;
 module.exports.RuntimeInfo = RuntimeInfo;
+
+module.exports.RuntimeStorage = RuntimeStorage;
+
 module.exports.Device = Device;
 module.exports.DeviceInfo = DeviceInfo;
 module.exports.OwnerUser = OwnerUser;
+module.exports.WebSocketClient = WebSocketClient;
+
+
+
+
+module.exports.KServerXHRClient = KServerXHRClient;
+module.exports.InfoNode = InfoNode;
 module.exports.KnowledgeManager = KnowledgeManager;
 module.exports.GlobalEventManager = GlobalEventManager;
 module.exports.initCurrentRuntime = initCurrentRuntime;
 
+
+
+
+
 module.exports.Zip = Zip;
 module.exports.Repository = Repository;
-module.exports.BX_REPOSITORY_REMOTE = BX_REPOSITORY_REMOTE;
-module.exports.BX_REPOSITORY_LOCAL = BX_REPOSITORY_LOCAL;
-module.exports.BX_REPOSITORY_FAKE = BX_REPOSITORY_FAKE;
+
+module.exports.BX_UID_TYPE_CORE = BX_UID_TYPE_CORE;
+module.exports.BX_UID_TYPE_APP = BX_UID_TYPE_APP;
+module.exports.BX_UID_TYPE_DEVELOPER = BX_UID_TYPE_DEVELOPER;
+module.exports.BX_UID_TYPE_RUNTIME = BX_UID_TYPE_RUNTIME;
+module.exports.BX_RUNTIME_LEVEL = BX_RUNTIME_LEVEL;

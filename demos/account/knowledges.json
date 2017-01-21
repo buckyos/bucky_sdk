@@ -1,21 +1,26 @@
 {
 	"global.events" : {
-		"type" : 2,
+		"type" : 1,
 		"map" : {}
 	},
 
 	"global.runtimes" : {
-		"type" : 2,
+		"type" : 1,
 		"map" : {}
 	},
 
 	"global.devices" : {
-		"type" : 2,
+		"type" : 1,
+		"map" : {}
+	},
+
+	"global.buses" : {
+		"type" : 1,
 		"map" : {}
 	},
 
 	"global.storages" : {
-		"type" : 2,
+		"type" : 1,
 		"map" : {}
 	},
 
@@ -34,14 +39,10 @@
 		}
 	},
 
-	"global.device_group" : {
-		"type" : 2,
-		"map" : {}
-	},
-
-	"global.device_ops" : {
-		"deviceID" : {
-			"startup" : ["runtimeID1","runtimeID2"]
+	"global.log": {
+		"type" : 0,
+		"object" : {
+			"host": ""
 		}
 	}
 
