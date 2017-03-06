@@ -466,6 +466,9 @@ class BaseLib {
             }
             let domain = BaseLib.domianConfig[nodeInfo.category];
             let address = schema+domain+"/"+path+"/"+nodeInfo.id;
+            if(nodeInfo.category == "bus") {
+                address += "/";
+            }
 
             if (nodeInfo.path) {
                 address += "/"+nodeInfo.path;
