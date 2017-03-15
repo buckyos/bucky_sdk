@@ -2,6 +2,11 @@
 
 
 
+
+
+
+
+
 var EVAL_ENABLE = true
 
 
@@ -15,15 +20,24 @@ const LOG_LEVEL_FATAL = 6;
 const LOG_LEVEL_OFF = 7;
 
 
-var BX_UID_TYPE_CORE = "CORE";
-var BX_UID_TYPE_APP = "APP";
-var BX_UID_TYPE_DEVELOPER = "DEV";
-var BX_UID_TYPE_RUNTIME = "RTM";
+const BX_UID_TYPE_CORE = "CORE";
+const BX_UID_TYPE_APP = "APP";
+const BX_UID_TYPE_DEVELOPER = "DEV";
+const BX_UID_TYPE_RUNTIME = "RTM";
 
 
 
-var BX_RUNTIME_LEVEL = 4;
 
+const BX_RUNTIME_LEVEL = 4;
+
+
+const BX_RUNTIME_STATE_ONLINE = 1;
+const BX_RUNTIME_STATE_OFFLINE = 2;
+const BX_RUNTIME_STATE_SLEEP = 3;
+
+const BX_BUS_STATE_ONLINE = 1;
+const BX_BUS_STATE_OFFLINE = 2;
+const BX_BUS_STATE_SLEEP = 3;
 
 function assert(val) {}
 function BX_CHECK(cond) {
@@ -42,58 +56,84 @@ function BX_SetLogLevel(level) {
 function BX_LOGIMPL(level, levelname, logs) {
     if (level >= log_level) {
         var args = [].slice.call(logs, 0);
-        args.unshift('['+levelname+']');
+        args.unshift(TimeFormater.getFormatTime()+'['+levelname+']');
         console.log.apply({}, args)
     }
 }
-
 function BX_LOG() {
-
-
-
     BX_LOGIMPL(LOG_LEVEL_INFO, 'INFO', arguments);
-
 }
 
 function BX_DEBUG() {
-
-
-
     BX_LOGIMPL(LOG_LEVEL_DEBUG, 'DEBUG', arguments);
-
 }
 
 function BX_TRACE() {
-
-
-
     BX_LOGIMPL(LOG_LEVEL_TRACE, 'TRACE', arguments);
-
 }
 
 function BX_INFO() {
-
-
-
-    BX_LOGIMPL(LOG_LEVEL_INFO, 'INGO', arguments);
-
+    BX_LOGIMPL(LOG_LEVEL_INFO, 'INFO', arguments);
 }
 
 function BX_WARN() {
-
-
-
     BX_LOGIMPL(LOG_LEVEL_WARN, 'WARN', arguments);
-
 }
 
 function BX_ERROR() {
-
-
-
     BX_LOGIMPL(LOG_LEVEL_ERROR, 'ERROR', arguments);
-
 }
+
+
+class TimeFormater {
+    static init() {
+        TimeFormater._inited = true;
+        Date.prototype.Format = function (fmt) {
+            var o = {
+                "M+": this.getMonth() + 1,
+                "d+": this.getDate(),
+                "h+": this.getHours(),
+                "m+": this.getMinutes(),
+                "s+": this.getSeconds(),
+                "q+": Math.floor((this.getMonth() + 3) / 3),
+                "S": this.getMilliseconds()
+            };
+            if (/(y+)/.test(fmt)) fmt = fmt.replace(RegExp.$1, (this.getFullYear() + "").substr(4 - RegExp.$1.length));
+            for (var k in o)
+            if (new RegExp("(" + k + ")").test(fmt)) fmt = fmt.replace(RegExp.$1, (RegExp.$1.length == 1) ? (o[k]) : (("00" + o[k]).substr(("" + o[k]).length)));
+            return fmt;
+        }
+    }
+
+    static getFormatTimeHoursAgo(housrs, formatString) {
+        if (!TimeFormater._inited) {
+            TimeFormater.init();
+        }
+
+        if (!housrs) {
+            housrs = 0;
+        }
+
+        if (formatString == null) {
+            return new Date(Date.now()-housrs*TimeFormater._msInHour).Format("yyyy-MM-dd hh:mm:ss")
+        }
+        return new Date(Date.now()-housrs*TimeFormater._msInHour).Format(formatString)
+    }
+
+    static getFormatTime(formatString) {
+        if (!TimeFormater._inited) {
+            TimeFormater.init();
+        }
+
+        if (formatString == null) {
+            return new Date().Format("yyyy-MM-dd hh:mm:ss");
+        }
+        return new Date().Format(formatString);
+    }
+}
+
+TimeFormater._inited = false;
+TimeFormater._msInHour = 3600*1000;
 
 class BaseLib {
     static setTimer(func,timeout) {
@@ -438,6 +478,27 @@ class BaseLib {
 
     }
 
+    static getDataEx(postURL,onComplete) {
+
+
+
+        let xmlhttp = new XMLHttpRequest();
+        xmlhttp.onreadystatechange = function() {
+            if(xmlhttp.readyState == 4) {
+                onComplete(xmlhttp.responseText, xmlhttp.status, ErrorCode.RESULT_OK);
+            }
+        };
+
+        xmlhttp.ontimeout = function (e) {
+            onComplete(null, -1, ErrorCode.RESULT_TIMEOUT);
+        };
+
+        xmlhttp.open("GET",postURL,true);
+        xmlhttp.setRequestHeader("Content-Type","application/x-www-form-urlencoded");
+        xmlhttp.send(null);
+
+    }
+
 
     static postJSONCall(postURL,postBody,onComplete) {
 
@@ -554,6 +615,7 @@ class BaseLib {
             if(nodeInfo.category == "bus") {
                 address += "/";
             }
+
             if (nodeInfo.path) {
                 address += "/"+nodeInfo.path;
             }
@@ -599,94 +661,6 @@ ErrorCode.RESULT_EXPIRED = 10;
 
 ErrorCode.RESULT_UNKNOWN = 255;
 
-class NodeInfo {
-    constructor() {
-        this.id = ""
-        this.type = ""
-        this.interfaces = [];
-
-
-    }
-}
-class Application {
-
-    constructor() {
-        this.state = Application.APP_STATE_UNKNOWN;
-        this.meta = null;
-        this.repositoryList = [];
-
-    }
-
-    init(metaInfo,onInitComplete) {
-        console.log("app metaInfo:", metaInfo);
-        BX_INFO("Application::init");
-
-        if(this.state != Application.APP_STATE_UNKNOWN)
-        {
-            BX_ERROR("cann't init Application from other state");
-            return [ErrorCode.RESULT_ERROR_STATE,"error state"];
-        }
-        this.state = Application.APP_STATE_INITING;
-        this.meta = metaInfo;
-        this.appid = metaInfo.appid;
-        this.appHost = metaInfo.appHost;
-        this.knowledgeHost = metaInfo.knowledgeHost;
-        this.schedulerHost = metaInfo.schedulerHost;
-        this.repositoryList.push(metaInfo.repositoryHost);
-        this.logHost = metaInfo.logHost;
-
-
-        onInitComplete(ErrorCode.RESULT_OK,this.meta);
-        return [ErrorCode.RESULT_OK,"OK"];
-    }
-
-    getID() {
-        return this.appid;
-    }
-
-
-
-
-
-    getKnowledgeHost() {
-        return this.knowledgeHost;
-    }
-
-    getLogHost() {
-        return this.logHost;
-    }
-
-    setLogHost() {
-        this.logHost;
-    }
-
-    getSchedulerHost(){
-        return this.schedulerHost;
-    }
-}
-
-
-Application.APP_STATE_UNKNOWN = 0;
-Application.APP_STATE_INITING = 1;
-Application.APP_STATE_ERROR = 2;
-Application.APP_STATE_RUNNING = 3;
-Application.APP_STATE_ONLINE = 4;
-Application.APP_STATE_OFFLINE = 5;
-Application.APP_STATE_BUSY = 6;
-
-Application._currentApp = null;
-Application._currentRuntime = null;
-
-
-
-function setCurrentApp(theApp) {
-    Application._currentApp = theApp;
-}
-
-function getCurrentApp() {
-    return Application._currentApp;
-}
-"use strict";
 
 var KRESULT = {
     "SUCCESS": 0,
@@ -705,6 +679,360 @@ var KRESULT = {
     "NOT_EMPTY": 13,
     "HIT_LIMIT": 14,
     "PERMISSION_DENIED" : 15,
+}
+
+class NodeInfo {
+    constructor() {
+        this.id = ""
+        this.type = ""
+        this.interfaces = [];
+
+
+    }
+}
+class Authentication {
+    constructor(client_private_key, client_public_key,
+                ca_server,
+                login_server,
+                options={}) {
+        let {filePath} = options;
+        if (filePath) {
+            this.private_key = fs.readFileSync(client_private_key, "utf8");
+            this.public_key = fs.readFileSync(client_public_key, "utf8");
+
+        } else {
+            this.private_key = client_private_key;
+            this.public_key = client_public_key;
+        }
+        this.ca_server = ca_server;
+        this.login_server = login_server;
+    }
+
+    signup(uid, onComplete, extra_info={}) {
+        let pk = this._genPk();
+        let origin_pk = pk;
+        let {password, meta} = extra_info;
+        let sn = BaseLib.createGUID();
+
+        this._postJSON(this.ca_server + '/register',
+                       {
+                           uid,
+                           pk,
+                           password,
+                           sn,
+                           meta
+                       },
+                       resp => {
+                           let {uid, pk, result, msg} = resp;
+                           if (result !== ErrorCode.RESULT_OK) {
+                               BX_ERROR('singup error: ', result, msg);
+                               onComplete({result, msg});
+                               return;
+                           }
+                           this._signinWithSignedPk({uid, signed_pk: pk, pk: origin_pk}, onComplete);
+                       });
+    }
+
+    signin(uid, onComplete, extra_info={}) {
+        let {signed_pk, pk} = extra_info;
+        if (pk && signed_pk) {
+            this._signinWithSignedPk({uid, signed_pk, pk}, onComplete);
+        } else {
+            this.updateInfo(uid, null, {}, info => this._signinWithSignedPk(info, onComplete));
+        }
+    }
+
+    updateInfo(uid, pk=null, user_info={}, onComplete=null) {
+        let sn = BaseLib.createGUID();
+        let key = this._genKey(uid, sn);
+
+        let {public_key, private_key, password, levelid, meta} = user_info;
+        let new_pk;
+        if (public_key) {
+
+            new_pk = this._genPk(public_key);
+        } else if (pk == null) {
+
+            new_pk = this._genPk();
+        }
+        let origin_pk = new_pk || pk;
+
+        this._postJSON(this.ca_server + '/register',
+                       {pk: new_pk || pk, levelid, password, sn, meta, uid, key},
+                       resp => {
+                           let {pk, uid, result, msg} = resp;
+                           if (result !== ErrorCode.RESULT_OK) {
+                               BX_ERROR('updateInfo error: ', result, msg);
+                               onComplete({result, msg});
+                               return;
+                           };
+                           let signed_pk = pk;
+
+                           if (public_key) {
+                               this.public_key = public_key;
+                           }
+                           if (private_key)
+                               this.private_key = private_key;
+
+                           if (onComplete)
+                               onComplete({uid, pk: origin_pk, signed_pk: signed_pk, result: 0});
+                       });
+    }
+
+    checkToken(uid, token, onComplete) {
+        this._postJSON(this.login_server + '/checktoken',
+                       {uid, token},
+                       resp => {
+                           let {result, uid, expireAt, msg} = resp;
+                           if (result !== ErrorCode.RESULT_OK) {
+                               BX_ERROR('checktoken error: ', result, msg);
+                               onComplete({result, msg});
+                               return;
+                           };
+                           onComplete({result, uid, expireAt, msg});
+
+
+                       });
+    }
+
+    _signinWithSignedPk(info={}, onComplete) {
+        let {uid, signed_pk, pk} = info;
+        if (uid && signed_pk && pk) {
+            let sn = BaseLib.createGUID();
+            let key = this._genKey(uid, sn);
+            this._postJSON(this.login_server + '/login',
+                           {
+                               uid,
+                               sn,
+                               key,
+                               pk: signed_pk
+                           },
+                           resp => {
+                               let {result, token, msg} = resp;
+                               if (result != ErrorCode.RESULT_OK) {
+                                   BX_ERROR('signinWithSignedPk error: ', result, msg);
+                               }
+                               onComplete(Object.assign(info, {token, result, msg}));
+                           });
+        } else {
+            throw 'miss `uid` or `signed_pk` before login.';
+        }
+    }
+
+    _genKey(uid, sn) {
+        return BaseLib.privateEncrypt(this.private_key,
+                                      BaseLib.md5(`${uid},${sn}`));
+    }
+
+    _genPk(public_key=null) {
+        let create_time = Math.floor(Date.now() / 1000);
+        let expire_time = create_time + 24*3600*30;
+        return `${public_key || this.public_key},${create_time},${expire_time}`;
+    }
+
+    _postJSON(url, data, onComplete) {
+        BaseLib.postJSONEx(url, data, (resp, status, errCode) => {
+            let json_data;
+            if (status !== 200) {
+                onComplete({result: status, msg: resp});
+                return;
+            } else if (errCode !== ErrorCode.RESULT_OK) {
+                onComplete({result: errCode, msg: resp});
+                return;
+            } else {
+                try {
+                    json_data = JSON.parse(resp);
+                    if (typeof(json_data) !== 'object') {
+                        onComplete({result: ErrorCode.RESULT_INVALID_TYPE, msg: resp});
+                        return;
+                    }
+                } catch(e) {
+                    onComplete({result: ErrorCode.RESULT_INVALID_TYPE, msg: resp});
+                    return;
+                }
+            }
+            onComplete(json_data);
+        });
+    }
+}
+var KSERVER_PROTOCOL_VERSION = 1;
+var KSERVER_PROTOCOL_HEADER = {
+    "magic": 0x20161103,
+    "length": 40,
+    "version": KSERVER_PROTOCOL_VERSION,
+    "packageMaxLength": 1024 * 32,
+};
+
+var KSERVER_PROTOCOL_CMD = {
+    "UNKNOWW": 0,
+    "REQ": 1,
+    "RESP": 2,
+    "EVENT": 3
+};
+
+class KServerPackageHeader {
+    constructor() {
+        this.m_magicNum = KSERVER_PROTOCOL_HEADER.magic;
+        this.m_packageLength = 0;
+        this.m_protocolVersion = KSERVER_PROTOCOL_HEADER.version;
+        this.m_flags = 0;
+        this.m_cmdType = KSERVER_PROTOCOL_CMD.UNKNOWW;
+        this.m_dataLength = 0;
+    }
+
+    Decode(buffer, pos) {
+        if (buffer.length < pos + KSERVER_PROTOCOL_HEADER.length) {
+            return false;
+        }
+
+
+        this.m_magicNum = buffer.readUInt32LE(pos);
+        this.m_packageLength = buffer.readUInt32LE(pos + 4);
+        this.m_protocolVersion = buffer.readUInt32LE(pos + 8);
+        this.m_flags = buffer.readUInt32LE(pos + 12);
+        this.m_cmdType = buffer.readUInt32LE(pos + 16);
+        this.m_dataLength = buffer.readUInt32LE(pos + 20);
+
+        return true;
+    }
+
+    Encode(buffer, pos) {
+        if (buffer.length < pos + KSERVER_PROTOCOL_HEADER.length) {
+            return false;
+        }
+
+        buffer.writeUInt32LE(this.m_magicNum, pos);
+        buffer.writeUInt32LE(this.m_packageLength, pos + 4);
+        buffer.writeUInt32LE(this.m_protocolVersion, pos + 8);
+        buffer.writeUInt32LE(this.m_flags, pos + 12);
+        buffer.writeUInt32LE(this.m_cmdType, pos + 16);
+        buffer.writeUInt32LE(this.m_dataLength, pos + 20);
+        buffer.writeUInt32LE(0, pos + 24, 16);
+
+        return true;
+    }
+}
+
+class KServerPackageCodec {
+    static Encode(packageInfo) {
+        const header = packageInfo.header;
+        const data = packageInfo.data;
+        const totalLength = data.length + KSERVER_PROTOCOL_HEADER.length;
+
+        header.m_dataLength = data.length;
+        header.m_packageLength = totalLength - 8;
+
+        let buffer;
+        try {
+            buffer = Buffer.allocUnsafe(totalLength);
+        } catch (e) {
+            BX_WARN("alloc buffer failed!", e);
+            buffer = null;
+        }
+
+        if (!buffer) {
+            return null;
+        }
+
+
+
+        header.Encode(buffer, 0);
+
+
+        buffer.write(data, KSERVER_PROTOCOL_HEADER.length, data.length);
+
+
+
+        return buffer;
+    }
+}
+
+
+class KServerPackageParser {
+    constructor(OnRecvPackage) {
+        this.m_dataBuffer = Buffer.allocUnsafe(KSERVER_PROTOCOL_HEADER.packageMaxLength + 64);
+        this.m_onRecvPackage = OnRecvPackage;
+        this.m_header = new KServerPackageHeader();
+
+        this.Reset();
+    }
+
+    Reset() {
+        this.m_status = 0;
+        this.m_leftSize = KSERVER_PROTOCOL_HEADER.length;
+        this.m_dataSize = 0;
+    }
+
+    PushData(buffer) {
+        let srcLen = buffer.length;
+        let offset = 0;
+        let ret = true;
+        for (;;) {
+
+
+            if (srcLen < this.m_leftSize) {
+                buffer.copy(this.m_dataBuffer, this.m_dataSize, offset, offset + srcLen);
+                this.m_dataSize += srcLen;
+                this.m_leftSize -= srcLen;
+                break;
+            }
+
+            srcLen -= this.m_leftSize;
+
+            buffer.copy(this.m_dataBuffer, this.m_dataSize, offset, offset + this.m_leftSize);
+            offset += this.m_leftSize;
+            this.m_dataSize += this.m_leftSize;
+
+            if (this.m_status === 0) {
+                ret = this.OnRecvHeader();
+            } else if (this.m_status === 1) {
+                ret = this.OnRecvBody();
+            } else {
+                BX_WARN("unexpected status!", this.m_status);
+                ret = false;
+            }
+
+            if (!ret) {
+                break;
+            }
+        }
+
+        return ret;
+    }
+
+    OnRecvHeader() {
+        if (!this.m_header.Decode(this.m_dataBuffer, 0)) {
+            BX_WARN("decode header failed! ");
+            return false;
+        }
+
+        if (this.m_header.m_magicNum != KSERVER_PROTOCOL_HEADER.magic) {
+            BX_WARN("unknown magic num:", this.m_header.m_magicNum, KSERVER_PROTOCOL_HEADER.magic);
+            return false;
+        }
+
+
+        if (this.m_header.m_packageLength > KSERVER_PROTOCOL_HEADER.packageMaxLength ||
+            this.m_header.m_packageLength <= 0) {
+            BX_WARN("invalid package length:", this.m_header.m_packageLength);
+            return false;
+        }
+
+        assert(this.m_status === 0);
+        this.m_status = 1;
+        this.m_leftSize = this.m_header.m_packageLength - KSERVER_PROTOCOL_HEADER.length + 8;
+
+        return true;
+    }
+
+    OnRecvBody() {
+        let ret = this.m_onRecvPackage(this.m_header, this.m_dataBuffer.slice(KSERVER_PROTOCOL_HEADER.length, this.m_header.m_packageLength + 8));
+        this.m_dataSize = 0;
+        this.m_status = 0;
+        this.m_leftSize = KSERVER_PROTOCOL_HEADER.length;
+
+        return ret;
+    }
 }
 
 class KServerLimitsChecker {
@@ -736,6 +1064,22 @@ class KServerRequest {
     }
 
 
+    SetSID(sid) {
+        this.m_sid = sid;
+    }
+
+    GetSID() {
+        return this.m_sid;
+    }
+
+
+    IsEmpty() {
+        return (this.m_readList.length === 0
+            && this.m_writeList.length === 0
+            && this.m_watchList.length === 0);
+    }
+
+
     CheckKey(key) {
         return true;
     }
@@ -753,7 +1097,7 @@ class KServerRequest {
 
         this.m_readList.push(req);
         this.m_readListCB.push(function(resp) {
-
+            BX_LOG("GetValue resp", resp, key);
             if (typeof resp != 'number') {
                 assert(resp.key === key);
                 OnResponse(resp.ret, resp.key, resp.value, resp.ver);
@@ -778,7 +1122,7 @@ class KServerRequest {
 
         this.m_readList.push(req);
         this.m_readListCB.push(function(resp) {
-
+            BX_DEBUG("GetHashValue response:", resp);
             if (typeof resp != 'number') {
                 assert(resp.key === key);
                 OnResponse(resp.ret, resp.key, resp.hkey, resp.value, resp.ver);
@@ -921,6 +1265,11 @@ class KServerRequest {
             "ver": 1,
         };
 
+
+        if (this.m_sid != null) {
+            request.sid = this.m_sid;
+        }
+
         if (this.m_readList.length > 0) {
             request.read = this.m_readList;
         }
@@ -937,10 +1286,10 @@ class KServerRequest {
         const reqData = JSON.stringify(request);
 
         if (tcp) {
-            let header = new kprotocol.KServerPackageHeader();
-            header.m_cmdType = kprotocol.KSERVER_PROTOCOL_CMD.REQ;
+            let header = new KServerPackageHeader();
+            header.m_cmdType = KSERVER_PROTOCOL_CMD.REQ;
 
-            let encodeData = kprotocol.KServerPackageCodec.Encode({
+            let encodeData = KServerPackageCodec.Encode({
                 "header": header,
                 "data": reqData
             });
@@ -953,7 +1302,7 @@ class KServerRequest {
 
 
     Response(respObj) {
-
+        BX_INFO("response:", respObj);
 
         if (this.m_readListCB.length > 0) {
             let ret;
@@ -1027,7 +1376,7 @@ class KServerRequest {
     }
 }
 class KServerXHRClient {
-    constructor(options) {
+       constructor(options) {
 
         this.m_options = options;
         this.m_nextSeq = 16;
@@ -1042,6 +1391,10 @@ class KServerXHRClient {
     }
 
     Request(request, OnCompete) {
+        if (request.IsEmpty()) {
+            return false;
+        }
+
         let encodeData = request.Encode(false);
         if (!encodeData) {
             return false;
@@ -1072,171 +1425,7 @@ class KServerXHRClient {
     }
 }
 
-class Authentication {
-    constructor(client_private_key, client_public_key,
-                ca_server='http://106.75.152.88:3000',
-                login_server='http://106.75.152.88:3000',
-                options={}) {
-        let {filePath} = options;
-        if (filePath) {
-            this.private_key = fs.readFileSync(client_private_key, "utf8");
-            this.public_key = fs.readFileSync(client_public_key, "utf8");
 
-        } else {
-            this.private_key = client_private_key;
-            this.public_key = client_public_key;
-        }
-        this.ca_server = ca_server;
-        this.login_server = login_server;
-    }
-
-    signup(uid, onComplete, extra_info={}) {
-        let pk = this._genPk();
-        let origin_pk = pk;
-        let {password, meta} = extra_info;
-        let sn = BaseLib.createGUID();
-
-        this._postJSON(this.ca_server + '/register',
-                       {
-                           uid,
-                           pk,
-                           password,
-                           sn,
-                           meta
-                       },
-                       resp => {
-                           let {uid, pk, result, msg} = resp;
-                           if (result !== ErrorCode.RESULT_OK) {
-                               console.error('singup error: ', result, msg);
-                               onComplete({result, msg});
-                               return;
-                           }
-                           this._signinWithSignedPk({uid, signed_pk: pk, pk: origin_pk}, onComplete);
-                       });
-    }
-
-    signin(uid, onComplete, extra_info={}) {
-        let {signed_pk, pk} = extra_info;
-        if (pk && signed_pk) {
-            this._signinWithSignedPk({uid, signed_pk, pk}, onComplete);
-        } else {
-            this.updateInfo(uid, null, {}, info => this._signinWithSignedPk(info, onComplete));
-        }
-    }
-
-    updateInfo(uid, pk=null, user_info={}, onComplete=null) {
-        let sn = BaseLib.createGUID();
-        let key = this._genKey(uid, sn);
-
-        let {public_key, private_key, password, levelid, meta} = user_info;
-        let new_pk;
-        if (public_key) {
-
-            new_pk = this._genPk(public_key);
-        } else if (pk == null) {
-
-            new_pk = this._genPk();
-        }
-        let origin_pk = new_pk || pk;
-
-        this._postJSON(this.ca_server + '/register',
-                       {pk: new_pk || pk, levelid, password, sn, meta, uid, key},
-                       resp => {
-                           let {pk, uid, result, msg} = resp;
-                           if (result !== ErrorCode.RESULT_OK) {
-                               console.error('updateInfo error: ', result, msg);
-                               onComplete({result, msg});
-                               return;
-                           };
-                           let signed_pk = pk;
-
-                           if (public_key) {
-                               this.public_key = public_key;
-                           }
-                           if (private_key)
-                               this.private_key = private_key;
-
-                           if (onComplete)
-                               onComplete({uid, pk: origin_pk, signed_pk: signed_pk, result: 0});
-                       });
-    }
-
-    checkToken(uid, token, onComplete) {
-        this._postJSON(this.login_server + '/checktoken',
-                       {uid, token},
-                       resp => {
-                           let {result, uid, expireAt, msg} = resp;
-                           if (result !== ErrorCode.RESULT_OK) {
-                               console.error('checktoken error: ', result, msg);
-                               onComplete({result, msg});
-                               return;
-                           };
-                           onComplete({result, uid, expireAt, msg});
-
-
-                       });
-    }
-
-    _signinWithSignedPk(info={}, onComplete) {
-        let {uid, signed_pk, pk} = info;
-        if (uid && signed_pk && pk) {
-            let sn = BaseLib.createGUID();
-            let key = this._genKey(uid, sn);
-            this._postJSON(this.login_server + '/login',
-                           {
-                               uid,
-                               sn,
-                               key,
-                               pk: signed_pk
-                           },
-                           resp => {
-                               let {result, token, msg} = resp;
-                               if (result != ErrorCode.RESULT_OK) {
-                                   console.error('signinWithSignedPk error: ', result, msg);
-                               }
-                               onComplete(Object.assign(info, {token, result, msg}));
-                           });
-        } else {
-            throw 'miss `uid` or `signed_pk` before login.';
-        }
-    }
-
-    _genKey(uid, sn) {
-        return BaseLib.privateEncrypt(this.private_key,
-                                      BaseLib.md5(`${uid},${sn}`));
-    }
-
-    _genPk(public_key=null) {
-        let create_time = Math.floor(Date.now() / 1000);
-        let expire_time = create_time + 24*3600*30;
-        return `${public_key || this.public_key},${create_time},${expire_time}`;
-    }
-
-    _postJSON(url, data, onComplete) {
-        BaseLib.postJSONEx(url, data, (resp, status, errCode) => {
-            let json_data;
-            if (errCode !== ErrorCode.RESULT_OK) {
-                onComplete({result: errCode, msg: resp});
-                return;
-            } else if (status !== 200) {
-                onComplete({result: status, msg: resp});
-                return;
-            } else {
-                try {
-                    json_data = JSON.parse(resp);
-                    if (typeof(json_data) !== 'object') {
-                        onComplete({result: ErrorCode.RESULT_INVALID_TYPE, msg: resp});
-                        return;
-                    }
-                } catch(e) {
-                    onComplete({result: ErrorCode.RESULT_INVALID_TYPE, msg: resp});
-                    return;
-                }
-            }
-            onComplete(json_data);
-        });
-    }
-}
 
 
 
@@ -1397,7 +1586,7 @@ class InfoNode {
             if (this._type == InfoNode.TYPE_OBJECT) {
                 return this._cacheObject;
             } else {
-                LOG_ERROR("read infonode " + this._nodeKey + " with error type." + this._type);
+                BX_ERROR("read infonode " + this._nodeKey + " with error type." + this._type);
             }
         }
 
@@ -1433,7 +1622,7 @@ class InfoNode {
                 return;
             }
         }
-        LOG_ERROR("cann't update with error type or error state." + thisNode._nodeKey);
+        BX_ERROR("cann't update with error type or error state." + thisNode._nodeKey);
     }
     mapGet(key) {
         if(this._state == InfoNode.STATE_NORMAL || this._state == InfoNode.STATE_LOCAL_CACHED) {
@@ -1441,7 +1630,7 @@ class InfoNode {
                 return this._cacheMap[key];
             }
         }
-        LOG_ERROR("cann't get map " + this._nodeKey + " " + key);
+        BX_ERROR("cann't get map " + this._nodeKey + " " + key);
         return null;
     }
 
@@ -1453,11 +1642,11 @@ class InfoNode {
                 delete thisNode._cacheMap[hkey];
                 delete thisNode._cacheMapInfo[hkey];
                 if(onComplete) {
-                    LOG_INFO("delete map " + nodeKey + " ok.");
+                    BX_INFO("delete map " + nodeKey + " ok.");
                     onComplete(thisNode,ret,hkey);
                 }
             } else {
-                LOG_ERROR("delete map " + nodeKey+ " error:" + ret);
+                BX_ERROR("delete map " + nodeKey+ " error:" + ret);
                 onComplete(thisNode,ret,hkey);
             }
         }
@@ -1487,7 +1676,7 @@ class InfoNode {
                         if(onComplete) {
                             onComplete(thisNode,ret,hkey);
                         }
-                        LOG_INFO("update map " + thisNode._nodeKey + ":" + key +" OK,version:" + ver);
+                        BX_INFO("update map " + thisNode._nodeKey + ":" + key +" OK,version:" + ver);
                     } else {
                         BX_WARN("update map " + thisNode._nodeKey + ":" + key +" error:" + ret + ",version:" + ver);
                         onComplete(thisNode,ret,hkey);
@@ -1506,7 +1695,7 @@ class InfoNode {
 
             }
         } else {
-            LOG_ERROR("cann't update map " + key + ",error type or error state " + this._type + " " + this._state);
+            BX_ERROR("cann't update map " + key + ",error type or error state " + this._type + " " + this._state);
         }
     }
 
@@ -1533,7 +1722,7 @@ class InfoNode {
                     onComplete(thisNode,ret);
                 }
             } else {
-                LOG_ERROR("clean map " + thisNode._nodeKey + " error:" + ret);
+                BX_ERROR("clean map " + thisNode._nodeKey + " error:" + ret);
                 onComplete(thisNode,ret);
             }
         }
@@ -1863,7 +2052,7 @@ class KnowledgeManager {
             }
         } else {
             if(this._knowKnowledges[key] == null) {
-                LOG_ERROR("knowledge " + key + " is not in depends list!");
+                BX_ERROR("knowledge " + key + " is not in depends list!");
                 return null;
             } else {
                 BX_WARN(key + " is syning,wait for ready.");
@@ -1878,6 +2067,87 @@ KnowledgeManager.STATE_NEED_SYNC = 0;
 KnowledgeManager.STATE_READY = 1;
 KnowledgeManager.STATE_SYNCING = 2;
 
+
+
+
+class Application {
+
+    constructor() {
+        this.state = Application.APP_STATE_UNKNOWN;
+        this.meta = null;
+        this.repositoryList = [];
+
+    }
+
+    init(metaInfo,onInitComplete) {
+        console.log("app metaInfo:", metaInfo);
+        BX_INFO("Application::init");
+
+        if(this.state != Application.APP_STATE_UNKNOWN)
+        {
+            BX_ERROR("cann't init Application from other state");
+            return [ErrorCode.RESULT_ERROR_STATE,"error state"];
+        }
+        this.state = Application.APP_STATE_INITING;
+        this.meta = metaInfo;
+        this.appid = metaInfo.appid;
+        this.appHost = metaInfo.appHost;
+        this.knowledgeHost = metaInfo.knowledgeHost;
+        this.schedulerHost = metaInfo.schedulerHost;
+        this.repositoryList.push(metaInfo.repositoryHost);
+        this.logHost = metaInfo.logHost;
+
+
+        onInitComplete(ErrorCode.RESULT_OK,this.meta);
+        return [ErrorCode.RESULT_OK,"OK"];
+    }
+
+    getID() {
+        return this.appid;
+    }
+
+
+
+
+
+    getKnowledgeHost() {
+        return this.knowledgeHost;
+    }
+
+    getLogHost() {
+        return this.logHost;
+    }
+
+    setLogHost() {
+        this.logHost;
+    }
+
+    getSchedulerHost(){
+        return this.schedulerHost;
+    }
+}
+
+
+Application.APP_STATE_UNKNOWN = 0;
+Application.APP_STATE_INITING = 1;
+Application.APP_STATE_ERROR = 2;
+Application.APP_STATE_RUNNING = 3;
+Application.APP_STATE_ONLINE = 4;
+Application.APP_STATE_OFFLINE = 5;
+Application.APP_STATE_BUSY = 6;
+
+Application._currentApp = null;
+Application._currentRuntime = null;
+
+
+
+function setCurrentApp(theApp) {
+    Application._currentApp = theApp;
+}
+
+function getCurrentApp() {
+    return Application._currentApp;
+}
 class RepositoryPuber{
     constructor(uid,traceId,token){
 
@@ -2173,7 +2443,7 @@ class RepositoryLoader {
 
         var resource='/1001/loadfile?';
         if(urlpath!=='/'){
-            resource = urlpath+resource;
+            resource = path.normalize(urlpath+resource);
         }
 
         let query = "";
@@ -2188,7 +2458,8 @@ class RepositoryLoader {
                 +'&packageid='+encodeURIComponent(packageid)
                 +'&packagever='+encodeURIComponent(packagever)
                 +'&filename='+encodeURIComponent(filename));
-
+            console.log("urlpath:"+urlpath);
+            console.log("query:"+query);
         }catch(err){
             onComplete(false);
             return;
@@ -2324,7 +2595,6 @@ class Repository{
         return puber;
     }
 }
-
 class XARPackage {
     constructor(xarConfig,ownerRuntime) {
         this.state = XARPackage.XAR_STATE_LOADING;
@@ -2405,7 +2675,7 @@ class RuntimeCache {
         this.m_allObjects = {}
     }
 
-    setObject(objID,objItem) {
+    setObject(objID, objItem) {
 
         let newObj = {};
         newObj.m_lastUsed = new Date().getTime();
@@ -2416,7 +2686,7 @@ class RuntimeCache {
 
     getObject(objID) {
         let result = this.m_allObjects[objID];
-        if(result) {
+        if (result) {
             result.m_lastUsed = new Date().getTime();
             return result.m_item;
         }
@@ -2426,7 +2696,7 @@ class RuntimeCache {
 
     removeObject(objID) {
         let result = this.m_allObjects[objID];
-        if(result) {
+        if (result) {
             delete this.m_allObjects[objID];
             return true;
         }
@@ -2435,7 +2705,7 @@ class RuntimeCache {
 
     isObjectExists(objID) {
         let result = this.m_allObjects[objID];
-        if(result) {
+        if (result) {
             return true;
         } else {
             return false;
@@ -2522,6 +2792,26 @@ class Scheduler{
   })
  }
 
+ resumeRuntime(runtimeid,callback){
+  let req = {
+   "cmd":"resumeruntime",
+   "uid":this.uid,
+   "token":this.token,
+   "appid":this.appid,
+   "runtimeid":runtimeid
+  }
+  BX_INFO("do resume runtime...")
+  BaseLib.postJSON(this.host,req,function(resp){
+   if( (resp!==null) && (resp.result===0) ){
+                BX_INFO('select runtime success');
+                callback(true,resp.runtime);
+            }else{
+                BX_ERROR('ERROR:select runtime failed.');
+                callback(false);
+            }
+  })
+ }
+
  selectBus(callback){
   let req = {
    "cmd":"selectbus",
@@ -2530,8 +2820,7 @@ class Scheduler{
    "appid":this.appid
   }
 
-  BX_INFO("do select bus...");
-  console.log(req);
+  BX_INFO("do select bus..., req:", req);
   BaseLib.postJSON(this.host,req,function(resp){
    if( (resp!==null) && (resp.result===0) ){
                 BX_INFO('select bus success');
@@ -2552,14 +2841,34 @@ class Scheduler{
    "eventid":eventid
   }
 
-  BX_INFO("do select event...");
-  console.log(req);
+  BX_INFO("do select event..., req:", req);
   BaseLib.postJSON(this.host,req,function(resp){
    if( (resp!==null) && (resp.result===0) ){
                 BX_INFO('select event success');
                 callback(true,resp.event);
             }else{
                 BX_ERROR('ERROR:select event failed.');
+                callback(false);
+            }
+  })
+ }
+
+ resumeEvent(eventid,callback){
+  let req = {
+   "cmd":"resumeevent",
+   "uid":this.uid,
+   "token":this.token,
+   "appid":this.appid,
+   "eventid":eventid
+  }
+
+  BX_INFO("do resume event..., req:", req);
+  BaseLib.postJSON(this.host,req,function(resp){
+   if( (resp!==null) && (resp.result===0) ){
+                BX_INFO('resume event success');
+                callback(true,resp.event);
+            }else{
+                BX_ERROR('ERROR:resume event failed.');
                 callback(false);
             }
   })
@@ -3080,12 +3389,24 @@ class RuntimeInstance {
         this.scheduler.selectEvent(eventid,function(ret,event){
             if(ret){
                 BX_INFO(event);
-                onComplete(event);
+                onComplete(ErrorCode.RESULT_OK);
             }else{
-                onComplete(null);
+                onComplete(ErrorCode.RESULT_UNKNOWN);
                 BX_ERROR("select event from scheduler failed.");
             }
         });
+    }
+
+    resumeEvent(eventid,onComplete){
+        this.scheduler.resumeEvent(eventid,function(ret,event){
+            if(ret){
+                BX_INFO(event);
+                onComplete(ErrorCode.RESULT_OK);
+            }else{
+                onComplete(ErrorCode.RESULT_UNKNOWN);
+                BX_ERROR("select event from scheduler failed.");
+            }
+        })
     }
 
 
@@ -3115,7 +3436,17 @@ class RuntimeInstance {
         return true;
     }
 
-    resumeRuntime(runtime,onComplete) {
+    resumeRuntime(runtime,onComplete){
+        let request = {
+            "cmd":"resumeruntime",
+            "runtimeid":runtime.ID
+        }
+        this.scheduler.resumeRuntime(request,function(ret){
+            onComplete(ret);
+        });
+    }
+
+    resumeRuntime_(runtime,onComplete) {
         let knowledegePath = "global.devices";
         let deviceMap = getCurrentRuntime().getKnowledgeManager().getKnowledge(knowledegePath);
         let deviceInfo = deviceMap.mapGet(runtime.ownerDeviceID);
@@ -3133,7 +3464,6 @@ class RuntimeInstance {
                 },1000);
             });
         }
-
     }
     getRuntimeInfo(runtimeID) {
 
@@ -3382,7 +3712,8 @@ class RuntimeInstance {
         }
     }
 
-    selectTargetRuntime(packageID,packageInfo,selectKey,onComplete) {
+    selectTargetRuntime(packageID,packageInfo,selectKey,useCache,onComplete) {
+        let self = this;
         BX_INFO("selectTargetRuntime packageID:" + packageID
             + " packageInfo.version:" + packageInfo.version
             + " selectKey:" + selectKey
@@ -3426,35 +3757,43 @@ class RuntimeInstance {
             "deviceability":deviceAbility
         };
 
-        let resultRuntime = null;
 
 
-        let storagePathList = packageInfo.storages;
-        if(storagePathList && storagePathList.length > 0) {
-            resultRuntime = thisRuntime.selectRuntimeByStoragePath(storagePathList,deviceGroupID);
-        }else{
-            resultRuntime = thisRuntime.selectRuntimeByFilter(deviceType,deviceAbility,packageInfo,deviceGroupID);
+        let selectExsitRuntime = function(){
+            let storagePathList = packageInfo.storages;
+            let resultRuntime = null;
+            if(storagePathList && storagePathList.length > 0) {
+                resultRuntime = thisRuntime.selectRuntimeByStoragePath(storagePathList,deviceGroupID);
+            }else{
+                resultRuntime = thisRuntime.selectRuntimeByFilter(deviceType,deviceAbility,packageInfo,deviceGroupID);
+            }
+            return resultRuntime;
         }
 
-
-
-        if(resultRuntime) {
-            BX_INFO("select runtime by storagepath return:" + resultRuntime.id);
-            if(!resultRuntime.isOnline ) {
-                thisRuntime.resumeRuntime(resultRuntime,function(resultRuntime) {
-                    onComplete(resultRuntime);
-                });
-            } else {
-                onComplete(resultRuntime);
-            }
-        } else {
-            this.scheduler.selectRuntime(packageInfo,deveiceInfo,function(ret,runtime){
+        let selectNewRuntime = function(callback){
+            self.scheduler.selectRuntime(packageInfo,deveiceInfo,function(ret,runtime){
                 if(ret){
-                    onComplete(runtime);
+                    callback(runtime);
                     BX_INFO(runtime);
                 }else{
                     BX_ERROR("select runtime from scheduler failed.");
                 }
+            });
+        }
+
+        let resultRuntime = null;
+        if (useCache) {
+            resultRuntime = selectExsitRuntime();
+        }
+
+        if(resultRuntime) {
+            BX_INFO("select runtime by storagepath return:" + resultRuntime.id+", state:"+resultRuntime.state);
+
+            onComplete(resultRuntime);
+        } else {
+            BX_INFO("select new runtime.");
+            selectNewRuntime(function(newRuntime){
+                onComplete(newRuntime);
             });
         }
 
@@ -3485,7 +3824,8 @@ class RuntimeInstance {
 
         let thisRuntime = this;
         let postURL = BaseLib.getUrlFromNodeInfo(remoteRuntimeInfo)+"/rpc";
-        console.log("postRPCCall=>" + postURL);
+        let callChain = getCurrentCallChain();
+
         let postBody = {};
         postBody.seq = BaseLib.createGUID();
         postBody.src = this.m_id;
@@ -3494,6 +3834,8 @@ class RuntimeInstance {
         postBody.trace_id = traceID;
         postBody.args = BaseLib.encodeParamAsJson(args);
         postBody.knowledges = this.m_knowledegeManager.getDependsKnowledgeInfo();
+        postBody.ccid = callChain.getID();
+
 
         BaseLib.postJSONCall(postURL,postBody,function(result,errorCode,respBody) {
             if(errorCode == ErrorCode.RESULT_NEED_SYNC) {
@@ -3513,6 +3855,156 @@ class RuntimeInstance {
     }
 }
 
+
+
+class CallChain {
+    constructor(parentCC = null,ccid="") {
+        let needLogStart = true;
+        if(ccid.length <= 0) {
+            this.m_id = BaseLib.createGUID();
+        } else {
+            needLogStart = false;
+            this.m_id = ccid;
+        }
+
+        this.m_parentCCID = "";
+        this.m_callStack = [];
+        this.m_frameID = 0;
+        this.m_isEnd = false;
+
+        if(needLogStart) {
+            if(parentCC == null) {
+                BX_INFO("##START CC,id=" + this.m_id,getCurrentTraceInfo(this));
+            } else {
+                this.m_parentCCID = parentCC.getID();
+                let codeFrame = parentCC.getCurrentCodeFrame();
+                BX_INFO("##START SUBCC,id=" + this.m_id + ",parent=" + this.m_parentCCID + ",from " + codeFrame.funcName + "@" + codeFrame.id,getCurrentTraceInfo(this));
+            }
+        }
+    }
+
+    getID() {
+        return this.m_id;
+    }
+
+    getCurrentCodeFrame() {
+        return this.m_callStack[this.m_callStack.length-1];
+    }
+
+    checkIsEnd() {
+        if(this.m_isEnd) {
+            BX_ERROR("callChain is END!!!",getCurrentTraceInfo(this));
+        }
+    }
+
+    logEnter(funcName) {
+        this.checkIsEnd();
+
+        this.m_frameID ++ ;
+        let codeFrame = {};
+        codeFrame.id = this.m_frameID;
+        codeFrame.funcName = funcName;
+        this.m_callStack.push(codeFrame);
+        BX_INFO ("##ENTER codeframe " + codeFrame.funcName + "@" + codeFrame.id,getCurrentTraceInfo(this));
+    }
+
+    logLeave(funcName) {
+        this.checkIsEnd();
+
+        let currentCodeFrame = this.getCurrentCodeFrame()
+        if(currentCodeFrame) {
+            if(currentCodeFrame.funcName === funcName) {
+                this.m_callStack.pop();
+                BX_INFO("##LEAVE codeframe " + currentCodeFrame.funcName + "@" + currentCodeFrame.id,getCurrentTraceInfo(this));
+                return;
+            }
+        }
+
+        BX_ERROR("callChain.logLeave error:" + funcName,getCurrentTraceInfo(this));
+    }
+
+    logCall(funcName) {
+        this.checkIsEnd();
+
+        this.m_frameID ++ ;
+        let codeFrame = {};
+        codeFrame.id = this.m_frameID;
+        codeFrame.funcName = funcName;
+        this.m_callStack.push(codeFrame);
+        BX_INFO ("##CALL codeframe " + codeFrame.funcName + "@" + codeFrame.id,getCurrentTraceInfo(this));
+    }
+
+    logReturn(funcName) {
+        this.checkIsEnd();
+
+        let currentCodeFrame = this.getCurrentCodeFrame()
+        if(currentCodeFrame) {
+            if(currentCodeFrame.funcName === funcName) {
+                this.m_callStack.pop();
+                BX_INFO("##RETURN codeframe " + currentCodeFrame.funcName + "@" + currentCodeFrame.id,getCurrentTraceInfo(this));
+                return;
+            }
+        }
+
+        BX_ERROR("callChain.logReturn error:" + funcName,getCurrentTraceInfo(this));
+    }
+
+    logEnd() {
+        this.checkIsEnd();
+
+        if(this.m_callStack.length > 0) {
+            BX_ERROR("callChain.logEnd error,have codeframe not return.",getCurrentTraceInfo(this));
+            return;
+        }
+        this.m_isEnd = true;
+        BX_INFO("##END callchain", getCurrentTraceInfo(this));
+    }
+
+    logWaitSubCCEnd(subccid) {
+
+    }
+
+}
+
+CallChain.s_one = null;
+
+function setCurrentCallChain(callChain) {
+    CallChain.s_one = callChain;
+}
+
+function getCurrentCallChain() {
+    if(CallChain.s_one == null) {
+        CallChain.s_one = new CallChain();
+    }
+    return CallChain.s_one;
+}
+
+function getCurrentTraceInfo(callChain = null) {
+
+    let result = {};
+    let thisRuntime = getCurrentRuntime();
+    if(thisRuntime) {
+        result.runtimeID = thisRuntime.getInstanceID();
+    } else {
+        result.runtimeID = "";
+    }
+    let thisApp = getCurrentApp();
+    if(thisApp) {
+        result.appID = thisApp.getID();
+    } else {
+        result.appID = "";
+    }
+
+    if(callChain) {
+        result.CCID = callChain.getID();
+    } else {
+        result.CCID = getCurrentCallChain().getID();
+    }
+
+    return function() {
+        return result.CCID + "," + result.runtimeID + "," + result.appID;
+    };
+}
 
 class DeviceInfo {
     constructor(deviceID) {
@@ -3755,6 +4247,12 @@ class OwnerUser {
 
 
 
+
+
+
+
+
+
 class WSReqList {
     constructor() {
         this.m_reqlist = {};
@@ -3808,14 +4306,6 @@ class WebSocketClient {
     }
 
     _send(reqString) {
-        BX_INFO("websocket will send:" + reqString);
-
-
-
-
-
-
-
     }
 
     GetID() {
@@ -3824,7 +4314,7 @@ class WebSocketClient {
 
     Start() {
         assert(!this.m_opened);
-        BX_INFO("will start webscoket to:" + this.m_addr);
+        BX_INFO("will start webscoket to:", this.m_addr, this.m_id);
         let This = this;
     }
 
@@ -3838,13 +4328,13 @@ class WebSocketClient {
         req.id = this.m_id;
         req.ctype = this.m_type;
 
+
         if (eventList) {
             assert(eventList instanceof Array);
             req.eventlist = eventList;
         }
 
         const reqString = JSON.stringify(req);
-
         this._send(reqString);
     }
 
@@ -3986,7 +4476,6 @@ class WebSocketClient {
     }
 
     _OnMessage(data) {
-        BX_INFO("recv from webscoket :" + data);
         const cmd = JSON.parse(data);
         if (cmd) {
             if (cmd.op === "onactive") {
@@ -4113,7 +4602,7 @@ class GlobalEventManager {
         }
         for(let i=0;i<listeners.length;++i) {
             if(listeners[i].cookie == cookie) {
-                listener.splice(i,1);
+                listeners.splice(i,1);
                 return listeners;
             }
         }
@@ -4360,23 +4849,20 @@ class GlobalEventManager {
 
 
     createEvent(eventID,onComplete) {
-
-
-
-
         let thisKM = this._km;
         let thisRuntime = getCurrentRuntime();
         let This = this;
 
-        let createEventById = function(){
-            thisRuntime.createEvent(eventID,function(newEventInfo){
-                if(newEventInfo){
-                    onComplete(ErrorCode.RESULT_OK);
-                }else{
-                    onComplete(ErrorCode.RESULT_UNKNOWN);
-                }
-            });
-        };
+        let getBusInfo = function(busid){
+            let kInfo = This._km.getKnowledge("global.buses");
+            let busInfo = null;
+            if(kInfo){
+                busInfo = kInfo.mapGet(busid);
+                return busInfo;
+            }else{
+                return null;
+            }
+        }
 
         let eventInfo = thisKM.getKnowledge("global.events" );
         if(eventInfo) {
@@ -4384,22 +4870,41 @@ class GlobalEventManager {
             if(eventObj) {
                 thisKM.dependKnowledge("global.buses",1);
                 thisKM.ready(function() {
-                    let kInfo = This._km.getKnowledge("global.buses");
-                    let exist = false;
-                    if(kInfo && kInfo.mapGet(eventObj.busID)){
-                        exist = true;
-                    }
-
-                    if(exist) {
-                        BX_ERROR("event aleady exist,eventID:" + eventID);
-                        onComplete(ErrorCode.RESULT_ALREADY_EXIST);
+                    let busInfo = getBusInfo(eventObj.busID);
+                    if(busInfo){
+                        if(busInfo.state === BX_BUS_STATE_OFFLINE){
+                            BaseLib.setOnceTimer(function(){
+                               busInfo = getBusInfo(eventObj.busID);
+                               if(busInfo && busInfo.state === BX_BUS_STATE_ONLINE){
+                                    BX_INFO("event aleady exist,eventID:" + eventID);
+                                    onComplete(ErrorCode.RESULT_ALREADY_EXIST);
+                               }else{
+                                    thisRuntime.createEvent(eventID,function(ret){
+                                        onComplete(ret);
+                                    });
+                               }
+                            },30*1000);
+                        }else if(busInfo.state === BX_BUS_STATE_SLEEP){
+                            thisRuntime.resumeEvent(eventID,function(ret){
+                                onComplete(ret);
+                            });
+                        }else if(busInfo.state === BX_BUS_STATE_ONLINE){
+                            BX_INFO("event aleady exist,eventID:" + eventID);
+                            onComplete(ErrorCode.RESULT_ALREADY_EXIST);
+                        }else{
+                            BX_ERROR("event's bus state invalid,eventID:" + eventID);
+                        }
                     }else{
                         BX_ERROR("event exist, but bus miss, recreate event,eventID:" + eventID);
-                        createEventById();
+                        thisRuntime.createEvent(eventID,function(ret){
+                            onComplete(ret);
+                        });
                     }
                 });
             } else {
-                createEventById();
+                thisRuntime.createEvent(eventID,function(ret){
+                    onComplete(ret);
+                });
             }
         } else {
             BX_ERROR("global event root object is not exist,MUST create this node!!!");

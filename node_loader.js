@@ -49,19 +49,28 @@ if(enableLocalDebug) {
     var core = require("./local_core.js");
     var BaseLib = core.BaseLib;
     var ErrorCode =core.ErrorCode;
-    var LOG_INFO = core.LOG_INFO;
     var BX_CHECK = core.BX_CHECK;
+    var BX_LOG = core.BX_LOG
+    var BX_INFO = core.BX_INFO;
+    var BX_WARN = core.BX_WARN;
+    var BX_DEBUG = core.BX_DEBUG;
+    var BX_ERROR = core.BX_ERROR;
+
     var Application = core.Application;
     var getCurrentRuntime = core.getCurrentRuntime;
     var getCurrentApp = core.getCurrentApp;
+    var getCurrentCallChain = core.getCurrentCallChain;
+    var setCurrentCallChain = core.setCurrentCallChain;
+    var CallChain = core.CallChain;
     var XARPackage = core.XARPackage;
     var RuntimeInstance = core.RuntimeInstance;
+    var RuntimeInfo = core.RuntimeInfo;
     var Device = core.Device;
+    var DeviceInfo = core.DeviceInfo;
     var OwnerUser = core.OwnerUser;
     var GlobalEventManager = core.GlobalEventManager;
-    var initCurrentRuntime = core.initCurrentRuntime;
-    var InfoNode = core.InfoNode;
     var KnowledgeManager = core.KnowledgeManager;
+    var initCurrentRuntime = initCurrentRuntime;
 
     if(modulesPath==null){
         modulesPath = __dirname+PATH_SEPARATOR+"bucky_modules";
@@ -71,18 +80,28 @@ if(enableLocalDebug) {
     var core = require("./node_core.js");
     var BaseLib = core.BaseLib;
     var ErrorCode =core.ErrorCode;
-    var LOG_INFO = core.LOG_INFO;
     var BX_CHECK = core.BX_CHECK;
+    var BX_LOG = core.BX_LOG
+    var BX_INFO = core.BX_INFO;
+    var BX_WARN = core.BX_WARN;
+    var BX_DEBUG = core.BX_DEBUG;
+    var BX_ERROR = core.BX_ERROR;
+
     var Application = core.Application;
     var getCurrentRuntime = core.getCurrentRuntime;
     var getCurrentApp = core.getCurrentApp;
+    var getCurrentCallChain = core.getCurrentCallChain;
+    var setCurrentCallChain = core.setCurrentCallChain;
+    var CallChain = core.CallChain;
     var XARPackage = core.XARPackage;
     var RuntimeInstance = core.RuntimeInstance;
+    var RuntimeInfo = core.RuntimeInfo;
     var Device = core.Device;
+    var DeviceInfo = core.DeviceInfo;
     var OwnerUser = core.OwnerUser;
     var GlobalEventManager = core.GlobalEventManager;
-    var InfoNode = core.InfoNode;
     var KnowledgeManager = core.KnowledgeManager;
+    var initCurrentRuntime = initCurrentRuntime;
 }
 
 if(mainjs == null) {

@@ -184,6 +184,10 @@ function doPub() {
     
     rclient.init(rmodules)
     let puber = rclient.getPuber(developerId,traceId,token);
+    if(puber == null) {
+        console.log("ERROR: check developerId + token failed.")
+        process.exit(1);
+    }
 
     puber.pub(appFolder,appConfig,function(ret, resp, theAppInfo){
     	if (ret) {

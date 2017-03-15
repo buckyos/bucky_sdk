@@ -24,8 +24,16 @@ function processModule(packageName, moduleName, moduleFile, packageInfo) {
     let thisRutnime = getCurrentRuntime();
     let rpc_args = Array.prototype.slice.call(arguments);
     rpc_args.pop();
-    thisRutnime.selectTargetRuntime("${packageName}",targetPackageInfo,"",function(targetRuntime) {
-        thisRutnime.postRPCCall(targetRuntime,"${packageName}:${moduleName}::${fn}",rpc_args,"",onComplete);
+    thisRutnime.selectTargetRuntime("${packageName}",targetPackageInfo,"",true,function(targetRuntime) {
+        thisRutnime.postRPCCall(targetRuntime,"${packageName}:${moduleName}::${fn}",rpc_args,"",function(result, errorCode) {
+            if (errorCode === 502) {
+                thisRutnime.selectTargetRuntime("${packageName}",targetPackageInfo,"",false,function(targetRuntime) {
+                    thisRutnime.postRPCCall(targetRuntime,"${packageName}:${moduleName}::${fn}",rpc_args,"",onComplete);
+                });
+            } else {
+                onComplete(result, errorCode);
+            }
+        });
     });
 }
 
