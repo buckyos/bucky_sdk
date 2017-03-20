@@ -1,7 +1,7 @@
 {
   "appid" : "WJxbojagwO",
-  "repositoryHost1" : "http://106.75.152.88/services/repository71/",
-  "repositoryHost" : "http://127.0.0.1:3658",
+  "repositoryHost" : "http://106.75.152.88/services/repository71/",
+  "repositoryHost1" : "http://127.0.0.1:3658",
   "knowledgeHost" : "https://dev.tinyappcloud.com/services/knowledge/get_value",
   "schedulerHost" : "https://dev.tinyappcloud.com/services/scheduler",
   "appver" : "1.0.0.1",
