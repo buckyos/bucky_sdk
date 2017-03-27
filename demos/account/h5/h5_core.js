@@ -1,13 +1,5 @@
 "use strict";
 var EVAL_ENABLE = true
-const LOG_LEVEL_ALL = 0;
-const LOG_LEVEL_TRACE = 1;
-const LOG_LEVEL_DEBUG = 2;
-const LOG_LEVEL_INFO = 3;
-const LOG_LEVEL_WARN = 4;
-const LOG_LEVEL_ERROR = 5;
-const LOG_LEVEL_FATAL = 6;
-const LOG_LEVEL_OFF = 7;
 const BX_UID_TYPE_CORE = "CORE";
 const BX_UID_TYPE_APP = "APP";
 const BX_UID_TYPE_DEVELOPER = "DEV";
@@ -19,39 +11,1047 @@ const BX_RUNTIME_STATE_SLEEP = 3;
 const BX_BUS_STATE_ONLINE = 1;
 const BX_BUS_STATE_OFFLINE = 2;
 const BX_BUS_STATE_SLEEP = 3;
-function assert(val) {}
-function BX_CHECK(cond) {
-    return;
-}
-var log_level = LOG_LEVEL_ALL;
-function BX_SetLogLevel(level) {
-    log_level = level;
-}
-function BX_LOGIMPL(level, levelname, logs) {
-    if (level >= log_level) {
-        var args = [].slice.call(logs, 0);
-        args.unshift(TimeFormater.getFormatTime()+'['+levelname+']');
-        console.log.apply({}, args)
+class ErrorCode {
+    static getErrorDesc(errorCode) {
     }
 }
-function BX_LOG() {
-    BX_LOGIMPL(LOG_LEVEL_INFO, 'INFO', arguments);
+ErrorCode.RESULT_OK = 0;
+ErrorCode.RESULT_TIMEOUT = 1;
+ErrorCode.RESULT_WAIT_INIT = 2;
+ErrorCode.RESULT_ERROR_STATE = 3;
+ErrorCode.RESULT_INVALID_TYPE = 4;
+ErrorCode.RESULT_SCRIPT_ERROR = 5;
+ErrorCode.RESULT_NO_IMP = 6;
+ErrorCode.RESULT_ALREADY_EXIST = 7;
+ErrorCode.RESULT_NEED_SYNC = 8;
+ErrorCode.RESULT_NOT_FOUND = 9;
+ErrorCode.RESULT_EXPIRED = 10;
+ErrorCode.RESULT_SIGNUP_FAILED = 20;
+ErrorCode.RESULT_SIGNIN_FAILED = 21;
+ErrorCode.RESULT_NO_TARGET_RUNTIME = 30;
+ErrorCode.RESULT_UNKNOWN = 255;
+const KRESULT = {
+    "SUCCESS": 0,
+    "FAILED": 1,
+    "INVALID_PARAM": 2,
+    "NOT_FOUND": 3,
+    "INVALID_TYPE": 4,
+    "INVALID_TOKEN": 5,
+    "INVALID_SESSION": 6,
+    "INVALID_FORMAT": 7,
+    "INVALID_CMD": 8,
+    "TIMEOUT": 9,
+    "AUTH_FAILED": 10,
+    "UNMATCH_VERSION": 11,
+    "ALREADY_EXISTS": 12,
+    "NOT_EMPTY": 13,
+    "HIT_LIMIT": 14,
+    "PERMISSION_DENIED" : 15,
 }
-function BX_DEBUG() {
-    BX_LOGIMPL(LOG_LEVEL_DEBUG, 'DEBUG', arguments);
+const RRESULT = {
+    'SUCCESS':0,
+    'FAILED':1,
+    'UID_NOT_VALID':2,
+    'CHECKTOKEN_FAILED':3,
+    'DB_OPEN_FAILED':4,
+    'DB_OP_FAILED':5,
+    'DB_EXCEPTION':6,
+    'ZIP_WRITE_FAILED':7,
+    'ZIP_FILE_NOT_EXSIT':8,
+    'ZIP_LOAD_FAILED':9,
+    'PKG_NOT_COMMIT':10,
 }
-function BX_TRACE() {
-    BX_LOGIMPL(LOG_LEVEL_TRACE, 'TRACE', arguments);
+class LinkedListItem {
+    constructor(data, pre, next) {
+        this.m_data = data;
+        this.m_pre = pre;
+        this.m_next = next;
+    }
 }
-function BX_INFO() {
-    BX_LOGIMPL(LOG_LEVEL_INFO, 'INFO', arguments);
+class LinkedList {
+    constructor() {
+        this.m_head = null;
+        this.m_tail = null;
+        this.m_current = null;
+        this.m_length = 0;
+        this.m_forward = false;
+    }
+    size() {
+        return this.m_length;
+    }
+    empty() {
+        return this.m_length === 0;
+    }
+    back() {
+        if (this.m_length === 0) {
+            return;
+        }
+        else {
+            return this.m_tail.m_data;
+        }
+    }
+    front() {
+        if (this.m_length === 0) {
+            return;
+        }
+        else {
+            return this.m_head.m_data;
+        }
+    }
+    push_back(data) {
+        let item = new LinkedListItem(data, this.m_tail, null);
+        if (this.m_length > 0) {
+            this.m_tail.m_next = item;
+            this.m_tail = item;
+        }
+        else {
+            this.m_head = item;
+            this.m_tail = item;
+        }
+        ++this.m_length;
+    }
+    pop_back() {
+        if (this.m_length <= 0) {
+            assert(this.m_head === null);
+            assert(this.m_tail === null);
+            return;
+        }
+        assert(this.m_tail);
+        let item = this.m_tail;
+        --this.m_length;
+        if (this.m_length > 0) {
+            this.m_tail = item.m_pre;
+            this.m_tail.m_next = null;
+        } else {
+            this.m_head = null;
+            this.m_tail = null;
+        }
+        if (this.m_current === item) {
+            this.__correct_current();
+        }
+        return item.m_data;
+    }
+    push_front(data) {
+        let item = new LinkedListItem(data, null, this.m_head);
+        if (this.m_length > 0) {
+            this.m_head.m_pre = item;
+            this.m_head = item;
+        }
+        else {
+            this.m_tail = item;
+            this.m_head = item;
+        }
+        ++this.m_length;
+    }
+    pop_front() {
+        if (this.m_length <= 0) {
+            assert(this.m_head === null);
+            assert(this.m_tail === null);
+            return;
+        }
+        assert(this.m_head);
+        let item = this.m_head;
+        --this.m_length;
+        if (this.m_length > 0) {
+            this.m_head = item.m_next;
+            this.m_head.m_pre = null;
+        } else {
+            this.m_head = null;
+            this.m_tail = null;
+        }
+        if (this.m_current === item) {
+            this.__correct_current();
+        }
+        return item.m_data;
+    }
+    current() {
+        if (this.m_current) {
+            return this.m_current.m_data;
+        }
+        else {
+            return;
+        }
+    }
+    __correct_current() {
+        if (this.m_current) {
+            let item = this.m_current;
+            if (this.m_forward) {
+                this.m_current = item.m_pre;
+            }
+            else {
+                this.m_current = item.m_next;
+            }
+        }
+    }
+    erase() {
+        if (!this.m_current) {
+            return;
+        }
+        if (this.m_current === this.m_head) {
+            this.pop_front();
+        }
+        else if (this.m_current === this.m_tail) {
+            this.pop_back();
+        }
+        else {
+            --this.m_length;
+            let item = this.m_current;
+            this.__correct_current();
+            item.m_pre.m_next = item.m_next;
+            item.m_next.m_pre = item.m_pre;
+        }
+        return true;
+    }
+    reset() {
+        this.m_current = null;
+    }
+    next() {
+        this.m_forward = true;
+        if (this.m_current) {
+            this.m_current = this.m_current.m_next;
+        }
+        else {
+            this.m_current = this.m_head;
+        }
+        if (this.m_current) {
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
+    prev() {
+        this.m_forward = false;
+        if (this.m_current) {
+            this.m_current = this.m_current.m_pre;
+        }
+        else {
+            this.m_current = this.m_tail;
+        }
+        if (this.m_current) {
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
 }
-function BX_WARN() {
-    BX_LOGIMPL(LOG_LEVEL_WARN, 'WARN', arguments);
+class BLogConsoleTarget {
+    constructor() {
+        this.m_clFuncs = {
+            "trace": console.trace,
+            "debug": console.debug,
+            "info": console.info,
+            "warn": console.warn,
+            "error": console.error,
+            "fatal": console.error,
+        };
+    }
+    output(logStringItem, options) {
+        let func = this.m_clFuncs[options.level];
+        if (func) {
+            func(logStringItem);
+        } else {
+            console.log(logStringItem);
+        }
+    }
 }
-function BX_ERROR() {
-    BX_LOGIMPL(LOG_LEVEL_ERROR, 'ERROR', arguments);
+var BLogGetDefaultConsoleTarget = function() {
+    let instance;
+    return function() {
+        if (!instance) {
+            instance = new BLogConsoleTarget();
+        }
+        return instance;
+    };
+}();
+const LogTargetMode = {
+    'ASYNC' : 0,
+    'SYNC' : 1,
+};
+const LogMemoryCacheStatus = {
+    'READY': 0,
+    'PENDING': 1,
+};
+class LogMemoryCache {
+    constructor(options, target) {
+        this.m_maxSize = -1;
+        this.m_maxCount = 1024 * 10;
+        if (options.maxSize) {
+            this.m_maxSize = options.maxSize;
+        }
+        if (options.maxCount) {
+            this.m_maxCount = options.maxCount;
+        }
+        this.m_retryInterval = 1000;
+        this.m_retryMaxCount = 5;
+        this.m_target = target;
+        assert(this.m_target);
+        this.m_logs = new LinkedList();
+        this.m_size = 0;
+    }
+    chain(nextTarget, mode) {
+        this.m_target = nextTarget;
+        this.m_mode = mode;
+        if (!nextTarget) {
+            this.m_mode = "copy";
+        }
+    }
+    _onItemCompelte(logItem, ret) {
+        const cb = logItem.c;
+        if (cb) {
+            cb(ret, logItem.l, logItem.o);
+        }
+    }
+    _continue() {
+        this._checkLimit();
+        while (!this.m_logs.empty()) {
+            const logItem = this.m_logs.pop_front();
+            if (this._outputItem(logItem)) {
+            } else {
+                break;
+            }
+        }
+    }
+    _cacheLog(logString, options, onComplete, back = true) {
+        const item = {
+            "l": logString,
+            "o": options,
+            "c": onComplete,
+            "r": 0,
+        };
+        this._cacheItem(item, back);
+    }
+    _cacheItem(logItem, back = true) {
+        this.m_size += logItem.l.length;
+        if (back) {
+            this.m_logs.push_back(logItem);
+        } else {
+            this.m_logs.push_front(logItem);
+        }
+    }
+    _checkLimit() {
+        if (this.m_maxCount > 0) {
+            while (this.m_logs.size() > this.m_maxCount) {
+                const oldItem = this.m_logs.pop_front();
+                this._onItemCompelte(oldItem);
+            }
+        }
+        if (this.m_maxSize > 0) {
+            while (this.m_size > this.m_maxSize) {
+                const oldItem = this.m_logs.pop_front();
+                if (oldItem) {
+                    this.m_size -= oldItem.l.length;
+                    assert(this.m_size >= 0);
+                    this._onItemCompelte(oldItem);
+                } else {
+                    break;
+                }
+            }
+        }
+    }
 }
+class AsyncLogMemoryCache extends LogMemoryCache {
+    constructor(options, target) {
+        super(options, target);
+        this.m_status = LogMemoryCacheStatus.READY;
+    }
+    output(logString, options, onComplete) {
+        const item = {
+            "l": logString,
+            "o": options,
+            "c": onComplete,
+            "r": 0,
+        };
+        let ret = false;
+        if (this.m_status === LogMemoryCacheStatus.READY &&
+            this.m_logs.empty()) {
+            ret = this._outputItem(item);
+        } else {
+            this._cacheItem(item, true);
+        }
+        return ret;
+    }
+    flush() {
+        while (!this.m_logs.empty()) {
+            const logItem = this.m_logs.pop_front();
+            if (this._outputItem(logItem)) {
+            } else {
+                break;
+            }
+        }
+    }
+    _outputItem(logItem) {
+        assert(this.m_status === LogMemoryCacheStatus.READY);
+        this.m_status = LogMemoryCacheStatus.PENDING;
+        let inCall = true;
+        const outputRet = this.m_target.output(logItem.l, logItem.o, (ret) => {
+            assert(this.m_status === LogMemoryCacheStatus.PENDING);
+            this.m_status = LogMemoryCacheStatus.READY;
+            if (ret === 0) {
+                if (logItem.c) {
+                    logItem.c(ret, logString, logOption);
+                }
+                if (inCall) {
+                    setImmediate(() => {
+                        this._continue();
+                    });
+                } else {
+                    this._continue();
+                }
+            } else {
+                ++logItem.r;
+                if (logItem.r > this.m_retryMaxCount) {
+                    if (logItem.c) {
+                        logItem.c(KRESULT.FAILED, logString, logOption);
+                    }
+                    if (inCall) {
+                        setImmediate(() => {
+                            this._continue();
+                        });
+                    } else {
+                        this._continue();
+                    }
+                } else {
+                    this._cacheItem(logItem, false);
+                    setTimeout(() => {
+                        this._continue();
+                    }, this.m_retryInterval);
+                }
+            }
+        });
+        inCall = false;
+        if (outputRet) {
+            this.m_status = LogMemoryCacheStatus.READY;
+        }
+        return outputRet;
+    }
+}
+class SyncLogMemoryCache extends LogMemoryCache {
+    constructor(options, target) {
+        super(options, target);
+        this.m_timer = null;
+    }
+    output(logString, options, onComplete) {
+        const item = {
+            "l": logString,
+            "o": options,
+            "c": onComplete,
+            "r": 0,
+        };
+        let ret = false;
+        if (this.m_logs.empty()) {
+            ret = this._outputItem(item);
+        } else {
+            this._cacheLog(item, true);
+        }
+        return ret;
+    }
+    flush() {
+        this._continue();
+    }
+    _outputItem(logItem) {
+        let ret = this.m_target.output(logItem.l, logItem.o);
+        if (ret) {
+            if (logItem.c) {
+                logItem.c(ret, logItem.l, logItem.o);
+            }
+        } else {
+            this._cacheItem(logItem, false);
+            if (this.m_timer == null) {
+                this.m_timer = setTimeout(() => {
+                    this.m_timer = null;
+                    this._continue();
+                } , this.m_retryInterval);
+            }
+        }
+        return ret;
+    }
+}
+const BLogLevel = {
+    "ALL": 0,
+    "TRACE": 1,
+    "DEBUG": 2,
+    "INFO": 3,
+    "WARN": 4,
+    "ERROR": 5,
+    "CHECK": 6,
+    "FATAL": 7,
+    "OFF": 8,
+    "strings" : ['all', 'trace', 'debug', 'info', 'warn', 'error', 'check', 'fatal', 'off'],
+    "toString" : (level) => {
+        return BLogLevel.strings[level];
+    }
+};
+class BLogNormalFormatter {
+    constructor() {
+        this.m_convertFuncs = {
+            "object": (arg) => {
+                return JSON.stringify(arg);
+            },
+            'undefined': () => {
+                return 'undefined';
+            },
+            'function': () => {
+                return "";
+            },
+            'string': (arg) => {
+                return arg;
+            },
+        };
+        if (BLogEnv.platform() === "win32") {
+            this.m_lineBreak = "\r\n";
+        } else if (BLogEnv.platform() === "darwin") {
+            this.m_lineBreak = "\r";
+        } else if (BLogEnv.platform() === "wx") {
+            this.m_lineBreak = "\n";
+        } else {
+            this.m_lineBreak = "\n";
+        }
+    }
+    getLineBreak() {
+        return this.m_lineBreak;
+    }
+    format(values, options) {
+        let strValue = "";
+        const separator = options.getSeparator();
+        let stringHeaders = options.getStringHeaders();
+        if (stringHeaders) {
+            for (let item in stringHeaders) {
+                strValue += stringHeaders[item];
+                strValue += separator;
+            }
+        }
+        strValue += '[' + values.level + ']' + separator;
+        strValue += '[' + BLogNormalFormatter.formatTime(values.time) + ']' + separator;
+        strValue += '[' + values.traceInfo + ']' + separator;
+        strValue += this.formatArgs(values.args);
+        if (values.pos) {
+            strValue += separator + values.pos.file + ':' + values.pos.line;
+        }
+        return strValue;
+    }
+    convertArg(arg) {
+        const type = typeof arg;
+        let result;
+        try {
+            let convertFunc = this.m_convertFuncs[type];
+            if (convertFunc) {
+                return convertFunc(arg);
+            } else {
+                return arg.toString();
+            }
+        } catch (err) {
+            result = "[!!!exception args!!!]";
+        }
+        return result;
+    }
+    formatArgs(args) {
+        if (args.length < 1) {
+            return "";
+        }
+        let maxIndex = 0;
+        let value = "";
+        if (typeof args[0] === 'string') {
+            value = args[0].replace(/{(\d+)}/g,
+                (match, index) => {
+                    const numIndex = parseInt(index) + 1;
+                    if (numIndex > maxIndex) {
+                        maxIndex = numIndex;
+                    }
+                    return this.convertArg(args[numIndex]);
+                });
+        } else {
+            value = this.convertArg(args[0]);
+        }
+        for (let index = maxIndex + 1; index < args.length; ++index) {
+            value += ' ' + this.convertArg(args[index]);
+        }
+        return value;
+    }
+    static fixNumber(num) {
+        let ret;
+        if (num >= 0 && num <= 9) {
+            ret = '0' + num;
+        } else {
+            ret = num;
+        }
+        return ret;
+    }
+    static formatTime(date) {
+        const dateString = date.getFullYear() + '-' + BLogNormalFormatter.fixNumber(date.getMonth() + 1) +
+            '-' + BLogNormalFormatter.fixNumber(date.getDate()) +
+            ' ' + BLogNormalFormatter.fixNumber(date.getHours()) +
+            ':' + BLogNormalFormatter.fixNumber(date.getMinutes()) +
+            ':' + BLogNormalFormatter.fixNumber(date.getSeconds()) +
+            '.' + date.getMilliseconds();
+        return dateString;
+    }
+}
+class BLogOptions {
+    constructor(options) {
+        this.m_switch = true;
+        this.m_level = BLogLevel.ALL;
+        this.m_logger = "global";
+        this.m_pos = true;
+        this.m_fullPath = false;
+        this.m_headers = {};
+        this.m_stringHeaders = {};
+        this.m_separator = ',';
+        this.m_targets = [];
+        if (options) {
+            for (let item in options) {
+                const type = typeof options[item];
+                if (type !== "object") {
+                    this[item] = options[item];
+                }
+            }
+            this.m_targets = [];
+            for (let i = 0; i < options.m_targets.length; ++i) {
+                this.m_targets.push(options.m_targets[i]);
+            }
+            for (let item in options.m_headers) {
+                this.m_headers[item] = options.m_headers[item];
+            }
+            for (let item in options.m_stringHeaders) {
+                this.m_stringHeaders[item] = options.m_stringHeaders[item];
+            }
+        }
+        if (!this.m_formatter) {
+            this.m_formatter = new BLogNormalFormatter();
+        }
+        if (this.m_targets.length <= 0) {
+            this.enableConsoleTarget(true);
+        }
+        BLogEnv.filterOptions(this);
+    }
+    setSwitch(on) {
+        if (on) {
+            this.m_switch = true;
+        } else {
+            this.m_switch = false;
+        }
+    }
+    getLevel() {
+        return this.m_level;
+    }
+    setLevel(level) {
+        if (typeof(level) === "string") {
+            this.m_level = BLogLevel[level];
+        } else if (typeof(level) === "number") {
+            this.m_level = level;
+        } else {
+            assert(false);
+        }
+    }
+    isLevelOn(level) {
+        if (level >= this.m_level) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    isOn(level) {
+        if (!this.m_switch) {
+            return false;
+        }
+        if (!this.isLevelOn(level)) {
+            return false;
+        }
+        return true;
+    }
+    clone() {
+        return new BLogOptions(this);
+    }
+    setLoggerName(name) {
+        this.m_logger = name;
+    }
+    getLoggerName() {
+        return this.m_logger;
+    }
+    setFormatter(formatter) {
+        this.m_formatter = formatter;
+    }
+    getFormatter() {
+        return this.m_formatter;
+    }
+    setSeparator(separator) {
+        this.m_separator = separator;
+    }
+    getSeparator() {
+        return this.m_separator;
+    }
+    enablePos(enable) {
+        this.m_pos = enable;
+    }
+    getPos() {
+        return this.m_pos;
+    }
+    enableFullPath(enable) {
+        this.m_fullPath = enable;
+    }
+    getFullPath() {
+        return this.m_fullPath;
+    }
+    addHeader(name, value) {
+        this.m_headers[name] = value;
+        this.m_stringHeaders[name] = this.genStringHeader(name);
+    }
+    removeHeader(name) {
+        delete this.m_headers[name];
+        delete this.m_stringHeaders[name];
+    }
+    genStringHeader(name) {
+        let headerString = '[' + name + '=' + this.m_headers[name] + ']';
+        return headerString;
+    }
+    getHeaders() {
+        return this.m_headers;
+    }
+    getStringHeaders() {
+        return this.m_stringHeaders;
+    }
+    getTargets() {
+        return this.m_targets;
+    }
+    addTarget(target) {
+        this.m_targets.push(target);
+    }
+    enableConsoleTarget(enable) {
+        const defaultConsoleTarget = BLogGetDefaultConsoleTarget();
+        if (enable) {
+            let exists = false;
+            for (let target of this.m_targets) {
+                if (target === defaultConsoleTarget) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                this.m_targets.push(defaultConsoleTarget);
+            }
+            return defaultConsoleTarget;
+        } else {
+            let ret = false;
+            for (let i = 0; i < this.m_targets.length; ++i) {
+                if (this.m_targets[i] === defaultConsoleTarget) {
+                    this.m_targets.slice(i, i + 1);
+                    ret = true;
+                    break;
+                }
+            }
+            return ret;
+        }
+    }
+    addFileTarget(options) {
+        let rootFolder;
+        if (os.platform() === 'win32') {
+            rootFolder = "C:\\blog\\";
+        } else {
+            rootFolder = "/var/blog/";
+        }
+        let fileName = path.basename(require.main.filename, ".js");
+        if (!fileName || fileName.length <= 0) {
+            fileName = "node";
+        }
+        const subFolder = fileName;
+        fileName += "[" + process.pid + "]";
+        const defaultOptions = {
+            "rootFolder": rootFolder,
+            "subFolder": subFolder,
+            "filename": fileName,
+            "filemaxsize": 1024 * 1024 * 16,
+            "filemaxcount": 20,
+        };
+        if (options) {
+            for (let item in options) {
+                defaultOptions[item] = options[item];
+            }
+            if (defaultOptions.rootFolder[defaultOptions.rootFolder.length - 1] != '/' &&
+                defaultOptions.rootFolder[defaultOptions.rootFolder.length - 1] != '\\') {
+                defaultOptions.rootFolder += '/';
+            }
+        }
+        defaultOptions.folder = defaultOptions.rootFolder + defaultOptions.subFolder;
+        let target;
+        if (options.mode && options.mode === 'sync') {
+            let fileTarget = new SyncLogFileTarget(defaultOptions);
+            target = new SyncLogMemoryCache({}, fileTarget);
+        } else {
+            let fileTarget = new AsyncLogFileTarget(defaultOptions);
+            target = new AsyncLogMemoryCache({}, fileTarget);
+        }
+        this.m_targets.push(target);
+        return target;
+    }
+    addStorageTarget(options) {
+        let target;
+        if (options.mode && options.mode === 'sync') {
+            let fileTarget = new SyncLogStorageTarget(options);
+            target = new SyncLogMemoryCache({}, fileTarget);
+        } else {
+            let fileTarget = new AsyncLogStorageTarget(options);
+            target = new AsyncLogMemoryCache({}, fileTarget);
+        }
+        this.m_targets.push(target);
+        return target;
+    }
+}
+var BLogGetGlobalOptions = function() {
+    let instance;
+    return function() {
+        if (!instance) {
+            instance = new BLogOptions();
+        }
+        return instance;
+    };
+}();
+class BLog {
+    constructor(options) {
+        if (options) {
+            this.m_options = new BLogOptions(options);
+        } else {
+            this.m_options = BLogGetGlobalOptions();
+        }
+    }
+    getOptions() {
+        return this.m_options;
+    }
+    setFunc(func) {
+        this.m_framefunc = func;
+    }
+    log(level, frameIndex, args) {
+        const options = this.m_options;
+        if (!options.isOn(level)) {
+            return;
+        }
+        const values = {};
+        values.traceInfo = "-";
+        const lastArg = args[args.length - 1];
+        if (typeof(lastArg) === "function") {
+            values.traceInfo = lastArg();
+        }
+        values.level = BLogLevel.toString(level);
+        values.time = new Date();
+        values.args = args;
+        values.headers = options.getHeaders();
+        if (this.m_options.getPos()) {
+            values.pos = BLog.getPos(this.log, frameIndex);
+            if (values.pos.file != null) {
+                if (!this.m_options.getFullPath()) {
+                    values.pos.file = path.basename(values.pos.file);
+                }
+            } else {
+                values.pos.file = '[source]';
+            }
+        }
+        const formatter = options.getFormatter();
+        assert(formatter);
+        const stringValue = formatter.format(values, this.m_options);
+        const targets = options.getTargets();
+        const targetOptions = {
+            "level": level,
+            "lbr": formatter.getLineBreak(),
+        };
+        for (let i = 0; i < targets.length; ++i) {
+            let target = targets[i];
+            target.output(stringValue, targetOptions);
+        }
+        return this;
+    }
+    bind(name, option) {
+        for (let i in this.m_option) {
+            if (!option[i]) {
+                option[i] = this.m_option[i];
+            }
+        }
+        const newObj = new BLog(option);
+        function __Log() {
+            return newObj.log(arguments);
+        }
+        newObj.setFunc(__Log);
+        if (name) {
+            module.exports[name] = __Log;
+        }
+        return __Log;
+    }
+    static getStack(func) {
+        const old = Error.prepareStackTrace;
+        Error.prepareStackTrace = (error, stack) => {
+            return stack;
+        };
+        const err = new Error();
+        Error.captureStackTrace(err, func);
+        const stack = err.stack;
+        Error.prepareStackTrace = old;
+        return stack;
+    }
+    static getPos(func, frameIndex) {
+        const stack = BLog.getStack(func);
+        const frame = stack[frameIndex];
+        const pos = {
+            "line": frame.getLineNumber(),
+            "file": frame.getFileName(),
+            "func": frame.getFunctionName(),
+        };
+        return pos;
+    }
+}
+var BLogGetDefaultLog = (function() {
+    let logInstance;
+    return function() {
+        if (!logInstance) {
+            logInstance = new BLog();
+        }
+        return logInstance;
+    };
+})();
+class BLogManager {
+    constructor() {
+        this.m_loggers = {};
+    }
+    addLogger(name, obj) {
+        assert(!this.m_loggers[name]);
+        this.m_loggers[name] = obj;
+    }
+    getLogger(name, option) {
+        let blogObj = this.m_loggers[name];
+        if (!blogObj) {
+            console.log("create new logger:", name);
+            blogObj = new BLog(option);
+            this.m_loggers[name] = blogObj;
+        }
+        return blogObj;
+    }
+}
+var BLogGetLogManager = (function() {
+    let managerInstance;
+    return function() {
+        if (!managerInstance) {
+            managerInstance = new BLogManager();
+        }
+        return managerInstance;
+    };
+})();
+function BLogModule(logObj) {
+    const trace = function() {
+        logObj.log(BLogLevel.TRACE, 1, arguments);
+    };
+    const debug = function() {
+        logObj.log(BLogLevel.DEBUG, 1, arguments);
+    };
+    const info = function() {
+        logObj.log(BLogLevel.INFO, 1, arguments);
+    };
+    const warn = function() {
+        logObj.log(BLogLevel.WARN, 1, arguments);
+    };
+    const error = function() {
+        logObj.log(BLogLevel.ERROR, 1, arguments);
+    };
+    const check = function(exp, ...args) {
+        if (!exp) {
+            logObj.log(BLogLevel.CHECK, 1, args);
+        }
+    }
+    const fatal = function() {
+        logObj.log(BLogLevel.FATAL, 1, arguments);
+    };
+    const getLogger = function(name, options) {
+        if (!options) {
+            options = logObj.getOptions();
+        }
+        let newLogObj = BLogGetLogManager().getLogger(name, options);
+        newLogObj.getOptions().setLoggerName(name);
+        return BLogModule(newLogObj);
+    };
+    const clone = function(options) {
+        if (!options) {
+            options = logObj.getOptions();
+        }
+        let newLogObj = new BLog(options);
+        return BLogModule(newLogObj);
+    };
+    const getOptions = function() {
+        return logObj.getOptions();
+    };
+    const setLevel = function(levelName) {
+        return logObj.getOptions().setLevel(levelName);
+    };
+    const addHeader = function(name, value) {
+        return logObj.getOptions().addHeader(name, value);
+    };
+    const removeHeader = function(name, value) {
+        return logObj.getOptions().removeHeader(name, value);
+    };
+    const setSeparator = function(separator) {
+        return logObj.getOptions().setSeparator(separator);
+    };
+    const enablePos = function(enable) {
+        return logObj.getOptions().enablePos(enable);
+    };
+    const enableFullPath = function(enable) {
+        return logObj.getOptions().enableFullPath(enable);
+    };
+    const addFileTarget = function(options) {
+        return logObj.getOptions().addFileTarget(options);
+    };
+    const addStorageTarget = function(options) {
+        return logObj.getOptions().addStorageTarget(options);
+    };
+    const addTarget = function(target) {
+        return logObj.getOptions().addTarget(target);
+    };
+    const enableConsoleTarget = function(enable) {
+        return logObj.getOptions().enableConsoleTarget(enable);
+    };
+    return {
+        "trace": trace,
+        "debug": debug,
+        "info": info,
+        "warn": warn,
+        "error": error,
+        "check" : check,
+        "fatal": fatal,
+        "log": info,
+        "assert": check,
+        "getLogger": getLogger,
+        "clone": clone,
+        "getOptions": getOptions,
+        "setLevel": setLevel,
+        "addHeader": addHeader,
+        "removeHeader": removeHeader,
+        "setSeparator": setSeparator,
+        "enablePos": enablePos,
+        "enableFullPath": enableFullPath,
+        "addTarget": addTarget,
+        "addFileTarget": addFileTarget,
+        "addStorageTarget": addStorageTarget,
+        "enableConsoleTarget": enableConsoleTarget,
+    };
+}
+const blog = BLogModule(BLogGetDefaultLog());
+const BLOG_LEVEL_ALL = BLogLevel.ALL;
+const BLOG_LEVEL_TRACE = BLogLevel.TRACE;
+const BLOG_LEVEL_DEBUG = BLogLevel.DEBUG;
+const BLOG_LEVEL_INFO = BLogLevel.INFO;
+const BLOG_LEVEL_WARN = BLogLevel.WARN;
+const BLOG_LEVEL_ERROR = BLogLevel.ERROR;
+const BLOG_LEVEL_CHECK = BLogLevel.CHECK;
+const BLOG_LEVEL_FATAL = BLogLevel.FATAL;
+const BLOG_LEVEL_OFF = BLogLevel.OFF;
+function BX_SetLogLevel(level) {
+    blog.setLevel(level);
+}
+const BX_LOG = blog.log;
+const BX_DEBUG = blog.debug;
+const BX_TRACE = blog.trace;
+const BX_INFO = blog.info;
+const BX_WARN = blog.warn;
+const BX_CHECK = blog.check;
+const BX_ERROR = blog.error;
+const BX_ASSERT = blog.assert;
+function assert(val) {}
 class TimeFormater {
     static init() {
         TimeFormater._inited = true;
@@ -65,9 +1065,14 @@ class TimeFormater {
                 "q+": Math.floor((this.getMonth() + 3) / 3),
                 "S": this.getMilliseconds()
             };
-            if (/(y+)/.test(fmt)) fmt = fmt.replace(RegExp.$1, (this.getFullYear() + "").substr(4 - RegExp.$1.length));
-            for (var k in o)
-            if (new RegExp("(" + k + ")").test(fmt)) fmt = fmt.replace(RegExp.$1, (RegExp.$1.length == 1) ? (o[k]) : (("00" + o[k]).substr(("" + o[k]).length)));
+            if (/(y+)/.test(fmt)) {
+                fmt = fmt.replace(RegExp.$1, (this.getFullYear() + "").substr(4 - RegExp.$1.length));
+            }
+            for (var k in o) {
+                if (new RegExp("(" + k + ")").test(fmt)) {
+                     fmt = fmt.replace(RegExp.$1, (RegExp.$1.length == 1) ? (o[k]) : (("00" + o[k]).substr(("" + o[k]).length)));
+                }
+            }
             return fmt;
         }
     }
@@ -484,55 +1489,6 @@ BaseLib.domianConfig = {
     "runtime" : "runtimes.tinyappcloud.com",
     "bus" : "buses.tinyappcloud.com"
 }
-class ErrorCode {
-    static getErrorDesc(errorCode) {
-    }
-}
-ErrorCode.RESULT_OK = 0;
-ErrorCode.RESULT_TIMEOUT = 1;
-ErrorCode.RESULT_WAIT_INIT = 2;
-ErrorCode.RESULT_ERROR_STATE = 3;
-ErrorCode.RESULT_INVALID_TYPE = 4;
-ErrorCode.RESULT_SCRIPT_ERROR = 5;
-ErrorCode.RESULT_NO_IMP = 6;
-ErrorCode.RESULT_ALREADY_EXIST = 7;
-ErrorCode.RESULT_NEED_SYNC = 8;
-ErrorCode.RESULT_NOT_FOUND = 9;
-ErrorCode.RESULT_EXPIRED = 10;
-ErrorCode.RESULT_SIGNUP_FAILED = 20;
-ErrorCode.RESULT_SIGNIN_FAILED = 21;
-ErrorCode.RESULT_UNKNOWN = 255;
-var KRESULT = {
-    "SUCCESS": 0,
-    "FAILED": 1,
-    "INVALID_PARAM": 2,
-    "NOT_FOUND": 3,
-    "INVALID_TYPE": 4,
-    "INVALID_TOKEN": 5,
-    "INVALID_SESSION": 6,
-    "INVALID_FORMAT": 7,
-    "INVALID_CMD": 8,
-    "TIMEOUT": 9,
-    "AUTH_FAILED": 10,
-    "UNMATCH_VERSION": 11,
-    "ALREADY_EXISTS": 12,
-    "NOT_EMPTY": 13,
-    "HIT_LIMIT": 14,
-    "PERMISSION_DENIED" : 15,
-}
-let RRESULT = {
-    'SUCCESS':0,
-    'FAILED':1,
-    'UID_NOT_VALID':2,
-    'CHECKTOKEN_FAILED':3,
-    'DB_OPEN_FAILED':4,
-    'DB_OP_FAILED':5,
-    'DB_EXCEPTION':6,
-    'ZIP_WRITE_FAILED':7,
-    'ZIP_FILE_NOT_EXSIT':8,
-    'ZIP_LOAD_FAILED':9,
-    'PKG_NOT_COMMIT':10,
-}
 class NodeInfo {
     constructor() {
         this.id = ""
@@ -573,6 +1529,7 @@ class Authentication {
                            let {uid, pk, result, msg} = resp;
                            if (result !== ErrorCode.RESULT_OK) {
                                BX_ERROR('singup error: ', result, msg);
+                               BX_INFO(resp);
                                onComplete({result, msg});
                                return;
                            }
@@ -604,6 +1561,7 @@ class Authentication {
                            let {pk, uid, result, msg} = resp;
                            if (result !== ErrorCode.RESULT_OK) {
                                BX_ERROR('updateInfo error: ', result, msg);
+                               BX_INFO(resp);
                                onComplete({result, msg});
                                return;
                            };
@@ -624,6 +1582,7 @@ class Authentication {
                            let {result, uid, expireAt, msg} = resp;
                            if (result !== ErrorCode.RESULT_OK) {
                                BX_ERROR('checktoken error: ', result, msg);
+                               BX_INFO(resp);
                                onComplete({result, msg});
                                return;
                            };
@@ -646,6 +1605,7 @@ class Authentication {
                                let {result, token, msg} = resp;
                                if (result != ErrorCode.RESULT_OK) {
                                    BX_ERROR('signinWithSignedPk error: ', result, msg);
+                                   BX_INFO(resp);
                                }
                                onComplete(Object.assign(info, {token, result, msg}));
                            });
@@ -1391,6 +2351,7 @@ class KnowledgeManager {
         if(this._state == KnowledgeManager.STATE_READY) {
             this._state = KnowledgeManager.STATE_NEED_SYNC;
         } else if(this._state== KnowledgeManager.STATE_SYNCING) {
+            this._syncQueue = this._syncQueue || [];
             this._syncQueue.push(kinfo);
         }
     }
@@ -1407,7 +2368,7 @@ class KnowledgeManager {
             return;
         }
         function _startSync() {
-            thisKM._syncQueue = [];
+            thisKM._syncQueue = thisKM._syncQueue || [];
             for(let key in thisKM._depends) {
                 let info = thisKM._depends[key];
                 if(info.isNeedSync) {
@@ -2590,7 +3551,7 @@ class RuntimeInstance {
     getRuntimeInfo(runtimeID) {
         let thisRuntime = getCurrentRuntime();
         if(thisRuntime.getInstanceID() == runtimeID) {
-            return thisRuntime.getInfo();
+            return thisRuntime.createRuntimeInfo();
         } else {
             let km = thisRuntime.getKnowledgeManager();
             let runtimeMap = km.getKnowledge("global.runtimes");
@@ -2782,6 +3743,10 @@ class RuntimeInstance {
         }
     }
     postRPCCall(remoteRuntimeInfo,functionname,args,traceID,onComplete) {
+        if (remoteRuntimeInfo == null) {
+            onComplete(null, ErrorCode.RESULT_NO_TARGET_RUNTIME);
+            return;
+        }
         let thisRuntime = this;
         let postURL = BaseLib.getUrlFromNodeInfo(remoteRuntimeInfo)+"/rpc";
         let callChain = getCurrentCallChain();
@@ -2823,6 +3788,7 @@ class CallChain {
         this.m_callStack = [];
         this.m_frameID = 0;
         this.m_isEnd = false;
+        this.m_startTime = new Date();
         if(needLogStart) {
             if(parentCC == null) {
                 BX_INFO("##START CC,id=" + this.m_id,getCurrentTraceInfo(this));
@@ -2893,7 +3859,7 @@ class CallChain {
             return;
         }
         this.m_isEnd = true;
-        BX_INFO("##END callchain", getCurrentTraceInfo(this));
+        BX_INFO("##END callchain, use time", new Date() - this.m_startTime, getCurrentTraceInfo(this));
     }
     logWaitSubCCEnd(subccid) {
     }
@@ -3674,3 +4640,27 @@ class GlobalEventManager {
         }
     }
 }
+module.exports = {};
+module.exports.BaseLib = BaseLib;
+module.exports.ErrorCode = ErrorCode;
+module.exports.KRESULT = KRESULT;
+module.exports.blog = blog;
+module.exports.BX_SetLogLevel = BX_SetLogLevel;
+module.exports.BX_EnableFileLog = BX_EnableFileLog;
+module.exports.BLOG_LEVEL_ALL = BLOG_LEVEL_ALL;
+module.exports.BLOG_LEVEL_TRACE = BLOG_LEVEL_TRACE;
+module.exports.BLOG_LEVEL_DEBUG = BLOG_LEVEL_DEBUG;
+module.exports.BLOG_LEVEL_INFO = BLOG_LEVEL_INFO;
+module.exports.BLOG_LEVEL_WARN = BLOG_LEVEL_WARN;
+module.exports.BLOG_LEVEL_ERROR = BLOG_LEVEL_ERROR;
+module.exports.BLOG_LEVEL_CHECK = BLOG_LEVEL_CHECK;
+module.exports.BLOG_LEVEL_FATAL = BLOG_LEVEL_FATAL;
+module.exports.BLOG_LEVEL_OFF = BLOG_LEVEL_OFF;
+module.exports.BX_LOG = BX_LOG;
+module.exports.BX_INFO = BX_INFO;
+module.exports.BX_WARN = BX_WARN;
+module.exports.BX_DEBUG = BX_DEBUG;
+module.exports.BX_ERROR = BX_ERROR;
+module.exports.BX_CHECK = BX_CHECK;
+module.exports.BX_ASSERT = BX_ASSERT;
+module.exports.BX_ERROR = BX_ERROR;

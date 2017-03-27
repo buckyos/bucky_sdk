@@ -1,23 +1,15 @@
 "use strict";
 var XMLHttpRequest = require("xmlhttprequest").XMLHttpRequest;
+var assert = require("assert");
 var url = require('url');
 var fs = require('fs');
 var path = require('path');
-var assert = require('assert');
 var os = require('os');
 var AdmZip = require('adm-zip');
 var child_process = require("child_process");
 var crypto = require('crypto')
 var PATH_SEPARATOR = path.normalize("/");
 var EVAL_ENABLE = true
-const LOG_LEVEL_ALL = 0;
-const LOG_LEVEL_TRACE = 1;
-const LOG_LEVEL_DEBUG = 2;
-const LOG_LEVEL_INFO = 3;
-const LOG_LEVEL_WARN = 4;
-const LOG_LEVEL_ERROR = 5;
-const LOG_LEVEL_FATAL = 6;
-const LOG_LEVEL_OFF = 7;
 const BX_UID_TYPE_CORE = "CORE";
 const BX_UID_TYPE_APP = "APP";
 const BX_UID_TYPE_DEVELOPER = "DEV";
@@ -29,39 +21,57 @@ const BX_RUNTIME_STATE_SLEEP = 3;
 const BX_BUS_STATE_ONLINE = 1;
 const BX_BUS_STATE_OFFLINE = 2;
 const BX_BUS_STATE_SLEEP = 3;
-function assert(val) {}
-function BX_CHECK(cond) {
-    return;
-}
-var log_level = LOG_LEVEL_ALL;
-function BX_SetLogLevel(level) {
-    log_level = level;
-}
-function BX_LOGIMPL(level, levelname, logs) {
-    if (level >= log_level) {
-        var args = [].slice.call(logs, 0);
-        args.unshift(TimeFormater.getFormatTime()+'['+levelname+']');
-        console.log.apply({}, args)
+class ErrorCode {
+    static getErrorDesc(errorCode) {
     }
 }
-function BX_LOG() {
-    BX_LOGIMPL(LOG_LEVEL_INFO, 'INFO', arguments);
+ErrorCode.RESULT_OK = 0;
+ErrorCode.RESULT_TIMEOUT = 1;
+ErrorCode.RESULT_WAIT_INIT = 2;
+ErrorCode.RESULT_ERROR_STATE = 3;
+ErrorCode.RESULT_INVALID_TYPE = 4;
+ErrorCode.RESULT_SCRIPT_ERROR = 5;
+ErrorCode.RESULT_NO_IMP = 6;
+ErrorCode.RESULT_ALREADY_EXIST = 7;
+ErrorCode.RESULT_NEED_SYNC = 8;
+ErrorCode.RESULT_NOT_FOUND = 9;
+ErrorCode.RESULT_EXPIRED = 10;
+ErrorCode.RESULT_SIGNUP_FAILED = 20;
+ErrorCode.RESULT_SIGNIN_FAILED = 21;
+ErrorCode.RESULT_NO_TARGET_RUNTIME = 30;
+ErrorCode.RESULT_UNKNOWN = 255;
+const KRESULT = {
+    "SUCCESS": 0,
+    "FAILED": 1,
+    "INVALID_PARAM": 2,
+    "NOT_FOUND": 3,
+    "INVALID_TYPE": 4,
+    "INVALID_TOKEN": 5,
+    "INVALID_SESSION": 6,
+    "INVALID_FORMAT": 7,
+    "INVALID_CMD": 8,
+    "TIMEOUT": 9,
+    "AUTH_FAILED": 10,
+    "UNMATCH_VERSION": 11,
+    "ALREADY_EXISTS": 12,
+    "NOT_EMPTY": 13,
+    "HIT_LIMIT": 14,
+    "PERMISSION_DENIED" : 15,
 }
-function BX_DEBUG() {
-    BX_LOGIMPL(LOG_LEVEL_DEBUG, 'DEBUG', arguments);
+const RRESULT = {
+    'SUCCESS':0,
+    'FAILED':1,
+    'UID_NOT_VALID':2,
+    'CHECKTOKEN_FAILED':3,
+    'DB_OPEN_FAILED':4,
+    'DB_OP_FAILED':5,
+    'DB_EXCEPTION':6,
+    'ZIP_WRITE_FAILED':7,
+    'ZIP_FILE_NOT_EXSIT':8,
+    'ZIP_LOAD_FAILED':9,
+    'PKG_NOT_COMMIT':10,
 }
-function BX_TRACE() {
-    BX_LOGIMPL(LOG_LEVEL_TRACE, 'TRACE', arguments);
-}
-function BX_INFO() {
-    BX_LOGIMPL(LOG_LEVEL_INFO, 'INFO', arguments);
-}
-function BX_WARN() {
-    BX_LOGIMPL(LOG_LEVEL_WARN, 'WARN', arguments);
-}
-function BX_ERROR() {
-    BX_LOGIMPL(LOG_LEVEL_ERROR, 'ERROR', arguments);
-}
+function assert(val) {}
 class TimeFormater {
     static init() {
         TimeFormater._inited = true;
@@ -75,9 +85,14 @@ class TimeFormater {
                 "q+": Math.floor((this.getMonth() + 3) / 3),
                 "S": this.getMilliseconds()
             };
-            if (/(y+)/.test(fmt)) fmt = fmt.replace(RegExp.$1, (this.getFullYear() + "").substr(4 - RegExp.$1.length));
-            for (var k in o)
-            if (new RegExp("(" + k + ")").test(fmt)) fmt = fmt.replace(RegExp.$1, (RegExp.$1.length == 1) ? (o[k]) : (("00" + o[k]).substr(("" + o[k]).length)));
+            if (/(y+)/.test(fmt)) {
+                fmt = fmt.replace(RegExp.$1, (this.getFullYear() + "").substr(4 - RegExp.$1.length));
+            }
+            for (var k in o) {
+                if (new RegExp("(" + k + ")").test(fmt)) {
+                     fmt = fmt.replace(RegExp.$1, (RegExp.$1.length == 1) ? (o[k]) : (("00" + o[k]).substr(("" + o[k]).length)));
+                }
+            }
             return fmt;
         }
     }
@@ -683,55 +698,6 @@ BaseLib.domianConfig = {
     "runtime" : "runtimes.tinyappcloud.com",
     "bus" : "buses.tinyappcloud.com"
 }
-class ErrorCode {
-    static getErrorDesc(errorCode) {
-    }
-}
-ErrorCode.RESULT_OK = 0;
-ErrorCode.RESULT_TIMEOUT = 1;
-ErrorCode.RESULT_WAIT_INIT = 2;
-ErrorCode.RESULT_ERROR_STATE = 3;
-ErrorCode.RESULT_INVALID_TYPE = 4;
-ErrorCode.RESULT_SCRIPT_ERROR = 5;
-ErrorCode.RESULT_NO_IMP = 6;
-ErrorCode.RESULT_ALREADY_EXIST = 7;
-ErrorCode.RESULT_NEED_SYNC = 8;
-ErrorCode.RESULT_NOT_FOUND = 9;
-ErrorCode.RESULT_EXPIRED = 10;
-ErrorCode.RESULT_SIGNUP_FAILED = 20;
-ErrorCode.RESULT_SIGNIN_FAILED = 21;
-ErrorCode.RESULT_UNKNOWN = 255;
-var KRESULT = {
-    "SUCCESS": 0,
-    "FAILED": 1,
-    "INVALID_PARAM": 2,
-    "NOT_FOUND": 3,
-    "INVALID_TYPE": 4,
-    "INVALID_TOKEN": 5,
-    "INVALID_SESSION": 6,
-    "INVALID_FORMAT": 7,
-    "INVALID_CMD": 8,
-    "TIMEOUT": 9,
-    "AUTH_FAILED": 10,
-    "UNMATCH_VERSION": 11,
-    "ALREADY_EXISTS": 12,
-    "NOT_EMPTY": 13,
-    "HIT_LIMIT": 14,
-    "PERMISSION_DENIED" : 15,
-}
-let RRESULT = {
-    'SUCCESS':0,
-    'FAILED':1,
-    'UID_NOT_VALID':2,
-    'CHECKTOKEN_FAILED':3,
-    'DB_OPEN_FAILED':4,
-    'DB_OP_FAILED':5,
-    'DB_EXCEPTION':6,
-    'ZIP_WRITE_FAILED':7,
-    'ZIP_FILE_NOT_EXSIT':8,
-    'ZIP_LOAD_FAILED':9,
-    'PKG_NOT_COMMIT':10,
-}
 class NodeInfo {
     constructor() {
         this.id = ""
@@ -772,6 +738,7 @@ class Authentication {
                            let {uid, pk, result, msg} = resp;
                            if (result !== ErrorCode.RESULT_OK) {
                                BX_ERROR('singup error: ', result, msg);
+                               BX_INFO(resp);
                                onComplete({result, msg});
                                return;
                            }
@@ -803,6 +770,7 @@ class Authentication {
                            let {pk, uid, result, msg} = resp;
                            if (result !== ErrorCode.RESULT_OK) {
                                BX_ERROR('updateInfo error: ', result, msg);
+                               BX_INFO(resp);
                                onComplete({result, msg});
                                return;
                            };
@@ -823,6 +791,7 @@ class Authentication {
                            let {result, uid, expireAt, msg} = resp;
                            if (result !== ErrorCode.RESULT_OK) {
                                BX_ERROR('checktoken error: ', result, msg);
+                               BX_INFO(resp);
                                onComplete({result, msg});
                                return;
                            };
@@ -845,6 +814,7 @@ class Authentication {
                                let {result, token, msg} = resp;
                                if (result != ErrorCode.RESULT_OK) {
                                    BX_ERROR('signinWithSignedPk error: ', result, msg);
+                                   BX_INFO(resp);
                                }
                                onComplete(Object.assign(info, {token, result, msg}));
                            });
@@ -1633,6 +1603,7 @@ class KnowledgeManager {
         if(this._state == KnowledgeManager.STATE_READY) {
             this._state = KnowledgeManager.STATE_NEED_SYNC;
         } else if(this._state== KnowledgeManager.STATE_SYNCING) {
+            this._syncQueue = this._syncQueue || [];
             this._syncQueue.push(kinfo);
         }
     }
@@ -1649,7 +1620,7 @@ class KnowledgeManager {
             return;
         }
         function _startSync() {
-            thisKM._syncQueue = [];
+            thisKM._syncQueue = thisKM._syncQueue || [];
             for(let key in thisKM._depends) {
                 let info = thisKM._depends[key];
                 if(info.isNeedSync) {
@@ -2971,7 +2942,7 @@ class RuntimeInstance {
     getRuntimeInfo(runtimeID) {
         let thisRuntime = getCurrentRuntime();
         if(thisRuntime.getInstanceID() == runtimeID) {
-            return thisRuntime.getInfo();
+            return thisRuntime.createRuntimeInfo();
         } else {
             let km = thisRuntime.getKnowledgeManager();
             let runtimeMap = km.getKnowledge("global.runtimes");
@@ -3163,6 +3134,10 @@ class RuntimeInstance {
         }
     }
     postRPCCall(remoteRuntimeInfo,functionname,args,traceID,onComplete) {
+        if (remoteRuntimeInfo == null) {
+            onComplete(null, ErrorCode.RESULT_NO_TARGET_RUNTIME);
+            return;
+        }
         let thisRuntime = this;
         let postURL = BaseLib.getUrlFromNodeInfo(remoteRuntimeInfo)+"/rpc";
         let callChain = getCurrentCallChain();
@@ -3204,6 +3179,7 @@ class CallChain {
         this.m_callStack = [];
         this.m_frameID = 0;
         this.m_isEnd = false;
+        this.m_startTime = new Date();
         if(needLogStart) {
             if(parentCC == null) {
                 BX_INFO("##START CC,id=" + this.m_id,getCurrentTraceInfo(this));
@@ -3274,7 +3250,7 @@ class CallChain {
             return;
         }
         this.m_isEnd = true;
-        BX_INFO("##END callchain", getCurrentTraceInfo(this));
+        BX_INFO("##END callchain, use time", new Date() - this.m_startTime, getCurrentTraceInfo(this));
     }
     logWaitSubCCEnd(subccid) {
     }
@@ -4050,16 +4026,27 @@ class GlobalEventManager {
 module.exports = {};
 module.exports.BaseLib = BaseLib;
 module.exports.ErrorCode = ErrorCode;
+module.exports.KRESULT = KRESULT;
+module.exports.blog = blog;
+module.exports.BX_SetLogLevel = BX_SetLogLevel;
+module.exports.BX_EnableFileLog = BX_EnableFileLog;
+module.exports.BLOG_LEVEL_ALL = BLOG_LEVEL_ALL;
+module.exports.BLOG_LEVEL_TRACE = BLOG_LEVEL_TRACE;
+module.exports.BLOG_LEVEL_DEBUG = BLOG_LEVEL_DEBUG;
+module.exports.BLOG_LEVEL_INFO = BLOG_LEVEL_INFO;
+module.exports.BLOG_LEVEL_WARN = BLOG_LEVEL_WARN;
+module.exports.BLOG_LEVEL_ERROR = BLOG_LEVEL_ERROR;
+module.exports.BLOG_LEVEL_CHECK = BLOG_LEVEL_CHECK;
+module.exports.BLOG_LEVEL_FATAL = BLOG_LEVEL_FATAL;
+module.exports.BLOG_LEVEL_OFF = BLOG_LEVEL_OFF;
 module.exports.BX_LOG = BX_LOG;
 module.exports.BX_INFO = BX_INFO;
 module.exports.BX_WARN = BX_WARN;
 module.exports.BX_DEBUG = BX_DEBUG;
 module.exports.BX_ERROR = BX_ERROR;
 module.exports.BX_CHECK = BX_CHECK;
-module.exports.BX_INFO = BX_INFO;
+module.exports.BX_ASSERT = BX_ASSERT;
 module.exports.BX_ERROR = BX_ERROR;
-module.exports.KRESULT = KRESULT;
-module.exports.RRESULT = RRESULT;
 module.exports.Application = Application;
 module.exports.getCurrentRuntime = getCurrentRuntime;
 module.exports.getCurrentApp = getCurrentApp;
@@ -4068,6 +4055,7 @@ module.exports.RuntimeInstance = RuntimeInstance;
 module.exports.RuntimeInfo = RuntimeInfo;
 module.exports.getCurrentCallChain = getCurrentCallChain;
 module.exports.setCurrentCallChain = setCurrentCallChain;
+module.exports.getCurrentTraceInfo = getCurrentTraceInfo;
 module.exports.CallChain = CallChain;
 module.exports.RuntimeStorage = RuntimeStorage;
 module.exports.Device = Device;
