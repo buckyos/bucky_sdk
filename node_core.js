@@ -877,7 +877,7 @@ let BlogUploader = (function() {
                 "off": 7,
             };
             let match = log.match(/\[([^\[\]]*)\],\[([^\[\]]*)\],\[([^\[\]]*)\]/);
-            if (match.length !== 4) {
+            if ((!match) || match.length !== 4) {
                 return null;
             } else {
                 let [_, level, datetime, traceInfo] = match;
