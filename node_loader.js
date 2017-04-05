@@ -38,7 +38,7 @@ for(var i=0;i<process.argv.length;i++)
         enableLocalDebug = true;
         localKnowledge = process.argv[i+1];
         if(localKnowledge == null) {
-            console.log("usage: node node_loader.js -main main.js [-app app.json] [-local_debug localKnowledge]")
+            console.log("usage: node node_loader.js -main main.js [-app app.json] [-local_debug localKnowledge]");
             process.exit(1);
         }
     }   
@@ -50,7 +50,7 @@ if(enableLocalDebug) {
     var BaseLib = core.BaseLib;
     var ErrorCode =core.ErrorCode;
     var BX_CHECK = core.BX_CHECK;
-    var BX_LOG = core.BX_LOG
+    var BX_LOG = core.BX_LOG;
     var BX_INFO = core.BX_INFO;
     var BX_WARN = core.BX_WARN;
     var BX_DEBUG = core.BX_DEBUG;
@@ -81,7 +81,7 @@ if(enableLocalDebug) {
     var BaseLib = core.BaseLib;
     var ErrorCode =core.ErrorCode;
     var BX_CHECK = core.BX_CHECK;
-    var BX_LOG = core.BX_LOG
+    var BX_LOG = core.BX_LOG;
     var BX_INFO = core.BX_INFO;
     var BX_WARN = core.BX_WARN;
     var BX_DEBUG = core.BX_DEBUG;
@@ -105,7 +105,7 @@ if(enableLocalDebug) {
 }
 
 if(mainjs == null) {
-    console.log("usage: node node_loader.js -main main.js [-app app.json] [-local_debug localKnowledge]")
+    console.log("usage: node node_loader.js -main main.js [-app app.json] [-local_debug localKnowledge]");
     process.exit(1);
 } else {
     if(mainjs[0] != '/' && mainjs[1] != ':') {

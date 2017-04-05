@@ -7,9 +7,9 @@ var path = require('path');
 var os = require('os');
 var AdmZip = require('adm-zip');
 var child_process = require("child_process");
-var crypto = require('crypto')
+var crypto = require('crypto');
 var PATH_SEPARATOR = path.normalize("/");
-var EVAL_ENABLE = true
+var EVAL_ENABLE = true;
 const BX_UID_TYPE_CORE = "CORE";
 const BX_UID_TYPE_APP = "APP";
 const BX_UID_TYPE_DEVELOPER = "DEV";
@@ -21,6 +21,7 @@ const BX_RUNTIME_STATE_SLEEP = 3;
 const BX_BUS_STATE_ONLINE = 1;
 const BX_BUS_STATE_OFFLINE = 2;
 const BX_BUS_STATE_SLEEP = 3;
+
 class ErrorCode {
     static getErrorDesc(errorCode) {
     }
@@ -36,9 +37,11 @@ ErrorCode.RESULT_ALREADY_EXIST = 7;
 ErrorCode.RESULT_NEED_SYNC = 8;
 ErrorCode.RESULT_NOT_FOUND = 9;
 ErrorCode.RESULT_EXPIRED = 10;
+ErrorCode.RESULT_INVALID_PARAM = 11;
 ErrorCode.RESULT_SIGNUP_FAILED = 20;
 ErrorCode.RESULT_SIGNIN_FAILED = 21;
 ErrorCode.RESULT_NO_TARGET_RUNTIME = 30;
+ErrorCode.RESULT_POST_FAILED = 40;
 ErrorCode.RESULT_UNKNOWN = 255;
 const KRESULT = {
     "SUCCESS": 0,
@@ -57,7 +60,7 @@ const KRESULT = {
     "NOT_EMPTY": 13,
     "HIT_LIMIT": 14,
     "PERMISSION_DENIED" : 15,
-}
+};
 const RRESULT = {
     'SUCCESS':0,
     'FAILED':1,
@@ -70,8 +73,9 @@ const RRESULT = {
     'ZIP_FILE_NOT_EXSIT':8,
     'ZIP_LOAD_FAILED':9,
     'PKG_NOT_COMMIT':10,
-}
+};
 function assert(val) {}
+
 class TimeFormater {
     static init() {
         TimeFormater._inited = true;
@@ -94,7 +98,7 @@ class TimeFormater {
                 }
             }
             return fmt;
-        }
+        };
     }
     static getFormatTimeHoursAgo(housrs, formatString) {
         if (!TimeFormater._inited) {
@@ -104,9 +108,21 @@ class TimeFormater {
             housrs = 0;
         }
         if (formatString == null) {
-            return new Date(Date.now()-housrs*TimeFormater._msInHour).Format("yyyy-MM-dd hh:mm:ss")
+            return new Date(Date.now()-housrs*TimeFormater._msInHour).Format("yyyy-MM-dd hh:mm:ss");
         }
-        return new Date(Date.now()-housrs*TimeFormater._msInHour).Format(formatString)
+        return new Date(Date.now()-housrs*TimeFormater._msInHour).Format(formatString);
+    }
+    static getFormatTimeSecondsAgo(seconds, formatString) {
+        if (!TimeFormater._inited) {
+            TimeFormater.init();
+        }
+        if (!seconds) {
+            seconds = 0;
+        }
+        if (formatString == null) {
+            return new Date(Date.now()-seconds*1000).Format("yyyy-MM-dd hh:mm:ss");
+        }
+        return new Date(Date.now()-seconds*1000).Format(formatString);
     }
     static getFormatTime(formatString) {
         if (!TimeFormater._inited) {
@@ -120,6 +136,7 @@ class TimeFormater {
 }
 TimeFormater._inited = false;
 TimeFormater._msInHour = 3600*1000;
+
 class BaseLib {
     static setTimer(func,timeout) {
         return setInterval(func,timeout);
@@ -181,18 +198,37 @@ class BaseLib {
         var uuid = s.join("");
         return uuid;
     }
+    static sortObject(object){
+        var sortedObj = {},
+            keys = Object.keys(object);
+        keys.sort(function(key1, key2){
+            key1 = key1.toLowerCase(), key2 = key2.toLowerCase();
+            if(key1 < key2) return -1;
+            if(key1 > key2) return 1;
+            return 0;
+        });
+        for(var index in keys){
+            var key = keys[index];
+            if(typeof object[key] == 'object' && !(object[key] instanceof Array)){
+                sortedObj[key] = BaseLib.sortObject(object[key]);
+            } else {
+                sortedObj[key] = object[key];
+            }
+        }
+        return sortedObj;
+    }
     static hash(method, s, format) {
       var sum = crypto.createHash(method);
       var isBuffer = Buffer.isBuffer(s);
       if (!isBuffer && typeof s === 'object') {
-        s = JSON.stringify(sortObject(s));
+        s = JSON.stringify(BaseLib.sortObject(s));
       }
       sum.update(s, isBuffer ? 'binary' : 'utf8');
       return sum.digest(format || 'hex');
-    };
+    }
     static md5(s, format) {
       return BaseLib.hash('md5', s, format);
-    };
+    }
     static privateEncrypt( private_key, text) {
         return crypto.privateEncrypt(private_key, Buffer.from(text))
             .toString('base64');
@@ -318,14 +354,14 @@ class BaseLib {
         fs.readdirSync(dir).forEach(function(file,index){
           var curDir = dir + "/" + file;
           if(fs.lstatSync(curDir).isDirectory()) {
-            deleteFolderRecursive(curDir);
+            BaseLib.deleteFolderRecursive(curDir);
           } else {
             fs.unlinkSync(curDir);
           }
         });
         fs.rmdirSync(dir);
       }
-    };
+    }
     static findSync(root, pattern, recoursive) {
         if (typeof pattern === 'boolean') {
             recoursive = pattern;
@@ -370,7 +406,7 @@ class BaseLib {
                         }
                     }
                 }
-            };
+            }
         }
         return null;
     }
@@ -379,7 +415,8 @@ class BaseLib {
         }else{
             root = path.dirname(root);
         }
-        while(true){
+        let condition = true;
+        while(condition){
             var name = BaseLib.findOnceSync(root,target,type);
             if(name!=null){
                 BX_INFO(name);
@@ -394,7 +431,7 @@ class BaseLib {
         }
     }
     static findFiles(root){
-        return BaseLib.findSync(root,true)
+        return BaseLib.findSync(root,true);
     }
     static writeFileTo( fileName, content, overwrite, attr) {
         if (BaseLib.fileExistsSync(fileName)) {
@@ -451,24 +488,24 @@ class BaseLib {
                             fs.close(fd, function(err) {
                                 fs.chmod(filePath, attr || 438, function() {
                                     callback(true);
-                                })
+                                });
                             });
                         });
                     });
-                })
+                });
             } else {
                 if(fd) {
                     fs.write(fd, content, 0, content.length, 0, function(err, written, buffer) {
                         fs.close(fd, function(err) {
                             fs.chmod(filePath, attr || 438, function() {
                                 callback(true);
-                            })
+                            });
                         });
                     });
                 } else {
                     fs.chmod(filePath, attr || 438, function() {
                         callback(true);
-                    })
+                    });
                 }
             }
         });
@@ -602,7 +639,7 @@ class BaseLib {
             } else {
                 onComplete(null,resultCode,null);
             }
-        })
+        });
     }
     static inet_aton(ip){
         var a = ip.split('.');
@@ -632,7 +669,7 @@ class BaseLib {
     }
     static decodeUID(uid){
         let infos = uid.split('@');
-        return {typeid:infos[0],levelid:infos[1],guid:infos[2],parentid:infos[3]}
+        return {typeid:infos[0],levelid:infos[1],guid:infos[2],parentid:infos[3]};
     }
     static getStack(callee) {
         var old = Error.prepareStackTrace;
@@ -697,20 +734,22 @@ BaseLib.domianConfig = {
     "device" : "dev.tinyappcloud.com",
     "runtime" : "runtimes.tinyappcloud.com",
     "bus" : "buses.tinyappcloud.com"
-}
+};
+
 class NodeInfo {
     constructor() {
-        this.id = ""
-        this.type = ""
+        this.id = "";
+        this.type = "";
         this.interfaces = [];
     }
 }
+
 class Authentication {
     constructor(client_private_key, client_public_key,
-                ca_server,
-                login_server,
-                options={}) {
-        let {filePath} = options;
+        ca_server,
+        login_server,
+        options = {}) {
+        let { filePath } = options;
         if (filePath) {
             this.private_key = fs.readFileSync(client_private_key, "utf8");
             this.public_key = fs.readFileSync(client_public_key, "utf8");
@@ -721,42 +760,41 @@ class Authentication {
         this.ca_server = ca_server;
         this.login_server = login_server;
     }
-    signup(uid, onComplete, extra_info={}) {
+    signup(uid, onComplete, extra_info = {}) {
         let pk = this._genPk();
         let origin_pk = pk;
-        let {password, meta} = extra_info;
+        let { password, meta } = extra_info;
         let sn = BaseLib.createGUID();
-        this._postJSON(this.ca_server + '/register',
-                       {
-                           uid,
-                           pk,
-                           password,
-                           sn,
-                           meta
-                       },
-                       resp => {
-                           let {uid, pk, result, msg} = resp;
-                           if (result !== ErrorCode.RESULT_OK) {
-                               BX_ERROR('singup error: ', result, msg);
-                               BX_INFO(resp);
-                               onComplete({result, msg});
-                               return;
-                           }
-                           this._signinWithSignedPk({uid, signed_pk: pk, pk: origin_pk}, onComplete);
-                       });
+        this._postJSON(this.ca_server + '/register', {
+                uid,
+                pk,
+                password,
+                sn,
+                meta
+            },
+            resp => {
+                let { uid, pk, result, msg } = resp;
+                if (result !== ErrorCode.RESULT_OK) {
+                    BX_ERROR('singup error: ', result, msg);
+                    BX_INFO(resp);
+                    onComplete({ result, msg });
+                    return;
+                }
+                this._signinWithSignedPk({ uid, signed_pk: pk, pk: origin_pk }, onComplete);
+            });
     }
-    signin(uid, onComplete, extra_info={}) {
-        let {signed_pk, pk} = extra_info;
+    signin(uid, onComplete, extra_info = {}) {
+        let { signed_pk, pk } = extra_info;
         if (pk && signed_pk) {
-            this._signinWithSignedPk({uid, signed_pk, pk}, onComplete);
+            this._signinWithSignedPk({ uid, signed_pk, pk }, onComplete);
         } else {
             this.updateInfo(uid, null, {}, info => this._signinWithSignedPk(info, onComplete));
         }
     }
-    updateInfo(uid, pk=null, user_info={}, onComplete=null) {
+    updateInfo(uid, pk = null, user_info = {}, onComplete = null) {
         let sn = BaseLib.createGUID();
         let key = this._genKey(uid, sn);
-        let {public_key, private_key, password, levelid, meta} = user_info;
+        let { public_key, private_key, password, levelid, meta } = user_info;
         let new_pk;
         if (public_key) {
             new_pk = this._genPk(public_key);
@@ -764,91 +802,88 @@ class Authentication {
             new_pk = this._genPk();
         }
         let origin_pk = new_pk || pk;
-        this._postJSON(this.ca_server + '/register',
-                       {pk: new_pk || pk, levelid, password, sn, meta, uid, key},
-                       resp => {
-                           let {pk, uid, result, msg} = resp;
-                           if (result !== ErrorCode.RESULT_OK) {
-                               BX_ERROR('updateInfo error: ', result, msg);
-                               BX_INFO(resp);
-                               onComplete({result, msg});
-                               return;
-                           };
-                           let signed_pk = pk;
-                           if (public_key) {
-                               this.public_key = public_key;
-                           }
-                           if (private_key)
-                               this.private_key = private_key;
-                           if (onComplete)
-                               onComplete({uid, pk: origin_pk, signed_pk: signed_pk, result: 0});
-                       });
+        this._postJSON(this.ca_server + '/register', { pk: new_pk || pk, levelid, password, sn, meta, uid, key },
+            resp => {
+                let { pk, uid, result, msg } = resp;
+                if (result !== ErrorCode.RESULT_OK) {
+                    BX_ERROR('updateInfo error: ', result, msg);
+                    BX_INFO(resp);
+                    onComplete({ result, msg });
+                    return;
+                }
+                let signed_pk = pk;
+                if (public_key) {
+                    this.public_key = public_key;
+                }
+                if (private_key)
+                    this.private_key = private_key;
+                if (onComplete)
+                    onComplete({ uid, pk: origin_pk, signed_pk: signed_pk, result: 0 });
+            });
     }
     checkToken(uid, token, onComplete) {
-        this._postJSON(this.login_server + '/checktoken',
-                       {uid, token},
-                       resp => {
-                           let {result, uid, expireAt, msg} = resp;
-                           if (result !== ErrorCode.RESULT_OK) {
-                               BX_ERROR('checktoken error: ', result, msg);
-                               BX_INFO(resp);
-                               onComplete({result, msg});
-                               return;
-                           };
-                           onComplete({result, uid, expireAt, msg});
-                       });
+        this._postJSON(this.login_server + '/checktoken', { uid, token },
+            resp => {
+                let { result, uid, expireAt, msg } = resp;
+                if (result !== ErrorCode.RESULT_OK) {
+                    BX_ERROR('checktoken error: ', result, msg);
+                    BX_INFO(resp);
+                    onComplete({ result, msg });
+                    return;
+                }
+                onComplete({ result, uid, expireAt, msg });
+            });
     }
-    _signinWithSignedPk(info={}, onComplete) {
-        let {uid, signed_pk, pk} = info;
+    _signinWithSignedPk(info = {}, onComplete) {
+        let { uid, signed_pk, pk } = info;
         if (uid && signed_pk && pk) {
             let sn = BaseLib.createGUID();
             let key = this._genKey(uid, sn);
-            this._postJSON(this.login_server + '/login',
-                           {
-                               uid,
-                               sn,
-                               key,
-                               pk: signed_pk
-                           },
-                           resp => {
-                               let {result, token, msg} = resp;
-                               if (result != ErrorCode.RESULT_OK) {
-                                   BX_ERROR('signinWithSignedPk error: ', result, msg);
-                                   BX_INFO(resp);
-                               }
-                               onComplete(Object.assign(info, {token, result, msg}));
-                           });
+            this._postJSON(this.login_server + '/login', {
+                    uid,
+                    sn,
+                    key,
+                    pk: signed_pk
+                },
+                resp => {
+                    let { result, token, msg } = resp;
+                    if (result != ErrorCode.RESULT_OK) {
+                        BX_ERROR('signinWithSignedPk error: ', result, msg);
+                        BX_INFO(resp);
+                    }
+                    onComplete(Object.assign(info, { token, result, msg }));
+                });
         } else {
             throw 'miss `uid` or `signed_pk` before login.';
         }
     }
     _genKey(uid, sn) {
         return BaseLib.privateEncrypt(this.private_key,
-                                      BaseLib.md5(`${uid},${sn}`));
+            BaseLib.md5(`${uid},${sn}`));
     }
-    _genPk(public_key=null) {
+    _genPk(public_key = null) {
         let create_time = Math.floor(Date.now() / 1000);
-        let expire_time = create_time + 24*3600*30;
+        let expire_time = create_time + 24 * 3600 * 30;
         return `${public_key || this.public_key},${create_time},${expire_time}`;
     }
     _postJSON(url, data, onComplete) {
         BaseLib.postJSONEx(url, data, (resp, status, errCode) => {
             let json_data;
             if (status !== 200) {
-                onComplete({result: status, msg: resp});
+                onComplete({ result: status, msg: resp });
                 return;
             } else if (errCode !== ErrorCode.RESULT_OK) {
-                onComplete({result: errCode, msg: resp});
+                onComplete({ result: errCode, msg: resp });
                 return;
             } else {
                 try {
                     json_data = JSON.parse(resp);
                     if (typeof(json_data) !== 'object') {
-                        onComplete({result: ErrorCode.RESULT_INVALID_TYPE, msg: resp});
+                        onComplete({ result: ErrorCode.RESULT_INVALID_TYPE, msg: resp });
                         return;
                     }
-                } catch(e) {
-                    onComplete({result: ErrorCode.RESULT_INVALID_TYPE, msg: resp});
+                } catch (e) {
+                    onComplete({ result: ErrorCode.RESULT_INVALID_TYPE, msg: resp });
                     return;
                 }
             }
@@ -869,6 +904,7 @@ var KSERVER_PROTOCOL_CMD = {
     "RESP": 2,
     "EVENT": 3
 };
+
 class KServerPackageHeader {
     constructor() {
         this.m_magicNum = KSERVER_PROTOCOL_HEADER.magic;
@@ -904,6 +940,7 @@ class KServerPackageHeader {
         return true;
     }
 }
+
 class KServerPackageCodec {
     static Encode(packageInfo) {
         const header = packageInfo.header;
@@ -926,6 +963,7 @@ class KServerPackageCodec {
         return buffer;
     }
 }
+
 class KServerPackageParser {
     constructor(OnRecvPackage) {
         this.m_dataBuffer = Buffer.allocUnsafe(KSERVER_PROTOCOL_HEADER.packageMaxLength + 64);
@@ -994,12 +1032,14 @@ class KServerPackageParser {
         return ret;
     }
 }
+
 class KServerLimitsChecker {
     static CheckKey(key) {
         if (key.length > 1024) {
         }
     }
 }
+
 class KServerRequest {
     constructor(appid, token, seq, onResponse = null) {
         this.m_appid = appid;
@@ -1266,6 +1306,7 @@ class KServerRequest {
         }
     }
 }
+
 class KServerXHRClient {
        constructor(options) {
         this.m_options = options;
@@ -1306,6 +1347,7 @@ class KServerXHRClient {
         return true;
     }
 }
+
 class InfoNode {
     constructor(km,key,type) {
         this._owner = km;
@@ -1320,235 +1362,225 @@ class InfoNode {
         this._state = InfoNode.STATE_INIT;
     }
     _show() {
-        let info = {}
-        info._nodeKey = this._nodeKey;
-        info._type = this._type;
-        info._version = this._version;
-        info._lastUpdate = this._lastUpdate;
-        info._cacheObject = this._cacheObject;
-        info._cacheMap = this._cacheMap;
-        info._cacheMapInfo = this._cacheMapInfo;
-        info._state = this._state;
+        let self = this;
+        let info = {};
+        info._nodeKey = self._nodeKey;
+        info._type = self._type;
+        info._version = self._version;
+        info._lastUpdate = self._lastUpdate;
+        info._cacheObject = self._cacheObject;
+        info._cacheMap = self._cacheMap;
+        info._cacheMapInfo = self._cacheMapInfo;
+        info._state = self._state;
         console.log(JSON.stringify(info));
     }
     loadFromKObject(kobj) {
-        this._state = InfoNode.STATE_LOCAL_CACHED;
+        let self = this;
+        self._state = InfoNode.STATE_LOCAL_CACHED;
         if(kobj.type == InfoNode.TYPE_OBJECT) {
-            this._cacheObject = kobj.object;
+            self._cacheObject = kobj.object;
         }
         if(kobj.type == InfoNode.TYPE_MAP) {
-            this._cacheMap = kobj.map;
+            self._cacheMap = kobj.map;
         }
     }
     sync(onComplete) {
-        let thisNode = this;
+        let self = this;
         BaseLib.asynCall(onComplete);
-        let request = thisNode._owner._client.NewRequest();
-        if(thisNode._type == InfoNode.TYPE_MAP) {
-            request.GetHashValue(thisNode._nodeKey,null,-1,function(ret, key, hkey, valueList, ver) {
+        let request = self._owner._client.NewRequest();
+        if(self._type == InfoNode.TYPE_MAP) {
+            request.GetHashValue(self._nodeKey,null,-1,function(ret, key, hkey, valueList, ver) {
                 if(ret == ErrorCode.RESULT_OK) {
                     let valueArray = valueList.split(",");
-                    thisNode._cacheMap = {};
-                    thisNode._cacheMapInfo = {};
-                    thisNode._lastUpdate = BaseLib.getNow();
-                    thisNode._version = ver;
-                    thisNode._state = InfoNode.STATE_NORMAL;
-                    let request2 = thisNode._owner._client.NewRequest();
+                    self._cacheMap = {};
+                    self._cacheMapInfo = {};
+                    self._lastUpdate = BaseLib.getNow();
+                    self._version = ver;
+                    self._state = InfoNode.STATE_NORMAL;
+                    let request2 = self._owner._client.NewRequest();
                     let completeNum = 0;
                     if(valueList.length > 0) {
                         for(let i=0;i<valueArray.length;++i) {
-                            request2.GetHashValue(thisNode._nodeKey,valueArray[i],ver,function(ret, key, hkey, valueList, ver) {
+                            request2.GetHashValue(self._nodeKey,valueArray[i],ver,function(ret, key, hkey, valueList, ver) {
                                 let truehkey = decodeURIComponent(hkey);
                                 if(ret == ErrorCode.RESULT_OK) {
                                     try {
-                                        thisNode._cacheMap[truehkey] = JSON.parse(valueList);
+                                        self._cacheMap[truehkey] = JSON.parse(valueList);
                                     } catch(e) {
                                         console.error('knowledge:sync error: ', e, valueList);
                                     }
-                                    thisNode._cacheMapInfo[truehkey] = {"version":ver};
+                                    self._cacheMapInfo[truehkey] = {"version":ver};
                                 }
                                 completeNum ++ ;
                                 if(completeNum == valueArray.length) {
-                                    thisNode._state = InfoNode.STATE_NORMAL;
-                                    onComplete(thisNode,ErrorCode.RESULT_OK);
+                                    self._state = InfoNode.STATE_NORMAL;
+                                    onComplete(self,ErrorCode.RESULT_OK);
                                 }
-                            })
-                            request2.WatchHashKey(thisNode._nodeKey,valueArray[i],["change"],function() {
+                            });
+                            request2.WatchHashKey(self._nodeKey,valueArray[i],["change"],function() {
                                 return;
                             });
                         }
                     } else {
-                        thisNode._owner._client.Request(request2);
-                        onComplete(thisNode,ErrorCode.RESULT_OK);
+                        self._owner._client.Request(request2);
+                        onComplete(self,ErrorCode.RESULT_OK);
                         return;
                     }
-                    thisNode._owner._client.Request(request2);
+                    self._owner._client.Request(request2);
                 } else {
-                    onComplete(thisNode,ret);
+                    onComplete(self,ret);
                 }
             });
-            thisNode._owner._client.Request(request);
-        } else if(thisNode._type == InfoNode.TYPE_OBJECT) {
-            request.GetValue(thisNode._nodeKey,-1,function(ret,key,value,ver) {
+            self._owner._client.Request(request);
+        } else if(self._type == InfoNode.TYPE_OBJECT) {
+            request.GetValue(self._nodeKey,-1,function(ret,key,value,ver) {
                 if(ret == ErrorCode.RESULT_OK) {
-                    thisNode._cacheObject = JSON.parse(value);
-                    thisNode._lastUpdate = BaseLib.getNow();
-                    thisNode._version = ver;
-                    thisNode._state = InfoNode.STATE_NORMAL;
-                    onComplete(thisNode,ErrorCode.RESULT_OK)
+                    self._cacheObject = JSON.parse(value);
+                    self._lastUpdate = BaseLib.getNow();
+                    self._version = ver;
+                    self._state = InfoNode.STATE_NORMAL;
+                    onComplete(self,ErrorCode.RESULT_OK);
                 } else {
-                    onComplete(thisNode,ErrorCode.RESULT_UNKNOWN);
+                    onComplete(self,ErrorCode.RESULT_UNKNOWN);
                 }
             });
-            thisNode._owner._client.Request(request);
+            self._owner._client.Request(request);
         }
     }
     getType() {
-        return this._type;
+        let self = this;
+        return self._type;
     }
     getState() {
-        return this._state;
+        let self = this;
+        return self._state;
     }
     objectRead() {
-        if(this._state == InfoNode.STATE_NORMAL || this._state == InfoNode.STATE_LOCAL_CACHED) {
-            if (this._type == InfoNode.TYPE_OBJECT) {
-                return this._cacheObject;
+        let self = this;
+        if(self._state == InfoNode.STATE_NORMAL || self._state == InfoNode.STATE_LOCAL_CACHED) {
+            if (self._type == InfoNode.TYPE_OBJECT) {
+                return self._cacheObject;
             } else {
-                BX_ERROR("read infonode " + this._nodeKey + " with error type." + this._type);
+                BX_ERROR("read infonode " + self._nodeKey + " with error type." + self._type);
             }
         }
         return null;
     }
     objectUpdate(obj,onComplete) {
-        let thisNode = this;
-        if(this._state == InfoNode.STATE_NORMAL || this._state == InfoNode.STATE_LOCAL_CACHED) {
-            if (this._type == InfoNode.TYPE_OBJECT) {
-                thisNode._cacheObject = obj;
+        let self = this;
+        if(self._state == InfoNode.STATE_NORMAL || self._state == InfoNode.STATE_LOCAL_CACHED) {
+            if (self._type == InfoNode.TYPE_OBJECT) {
+                self._cacheObject = obj;
                 BaseLib.asynCall(function() {
-                    onComplete(thisNode,ErrorCode.RESULT_OK);
+                    onComplete(self,ErrorCode.RESULT_OK);
                 });
                 return ;
-                let request = thisNode._owner._client.NewRequest();
-                function onSetOK(ret,key,ver) {
+                let request = self._owner._client.NewRequest();
+                let onSetOK = function(ret,key,ver) {
                     if(ret == ErrorCode.RESULT_OK) {
-                        thisNode._cacheObject = obj;
-                        thisNode._version = ver;
-                        thisNode._lastUpdate = BaseLib.getNow();
-                        onComplete(thisNode,ErrorCode.RESULT_OK);
+                        self._cacheObject = obj;
+                        self._version = ver;
+                        self._lastUpdate = BaseLib.getNow();
+                        onComplete(self,ErrorCode.RESULT_OK);
                     } else {
-                        BX_WARN("update object " + thisNOde._nodeKey + " error:" + ret);
-                        onComplete(thisNode,ret);
+                        BX_WARN("update object " + self._nodeKey + " error:" + ret);
+                        onComplete(self,ret);
                     }
-                }
-                request.SetValue(thisNode._nodeKey,JSON.stringify(obj),thisNode._version,onSetOK);
-                thisNode._owner._client.Request(request);
+                };
+                request.SetValue(self._nodeKey,JSON.stringify(obj),self._version,onSetOK);
+                self._owner._client.Request(request);
                 return;
             }
         }
-        BX_ERROR("cann't update with error type or error state." + thisNode._nodeKey);
+        BX_ERROR("cann't update with error type or error state." + self._nodeKey);
     }
     mapGet(key) {
-        if(this._state == InfoNode.STATE_NORMAL || this._state == InfoNode.STATE_LOCAL_CACHED) {
-            if(this._type == InfoNode.TYPE_MAP) {
-                return this._cacheMap[key];
+        let self = this;
+        if(self._state == InfoNode.STATE_NORMAL || self._state == InfoNode.STATE_LOCAL_CACHED) {
+            if(self._type == InfoNode.TYPE_MAP) {
+                return self._cacheMap[key];
             }
         }
-        BX_ERROR("cann't get map " + this._nodeKey + " " + key);
+        BX_ERROR("cann't get map " + self._nodeKey + " " + key);
         return null;
     }
     mapDelete(key,onComplete) {
-        let thisNode = this;
-        let request = thisNode._owner._client.NewRequest();
-        delete thisNode._cacheMap[hkey];
+        let self = this;
+        let request = self._owner._client.NewRequest();
+        delete self._cacheMap[hkey];
         BaseLib.asynCall(function() {
-            onComplete(thisNode,ErrorCode.RESULT_OK,key);
+            onComplete(self,ErrorCode.RESULT_OK,key);
         });
         return ;
         function onSetOK(ret,nodeKey,hkey,ver) {
             if(ret == ErrorCode.RESULT_OK) {
-                delete thisNode._cacheMap[hkey];
-                delete thisNode._cacheMapInfo[hkey];
+                delete self._cacheMap[hkey];
+                delete self._cacheMapInfo[hkey];
                 if(onComplete) {
                     BX_INFO("delete map " + nodeKey + " ok.");
-                    onComplete(thisNode,ret,hkey);
+                    onComplete(self,ret,hkey);
                 }
             } else {
                 BX_ERROR("delete map " + nodeKey+ " error:" + ret);
-                onComplete(thisNode,ret,hkey);
+                onComplete(self,ret,hkey);
             }
         }
-        request.SetHashValue(thisNode._nodeKey,encodeURIComponent(key),null,-1,onSetOK);
-        thisNode._owner._client.Request(request);
+        request.SetHashValue(self._nodeKey,encodeURIComponent(key),null,-1,onSetOK);
+        self._owner._client.Request(request);
     }
     mapSet(key,object,onComplete) {
-        let thisNode = this;
-        if(this._state == InfoNode.STATE_NORMAL || this._state == InfoNode.STATE_LOCAL_CACHED) {
-            if (this._type == InfoNode.TYPE_MAP) {
-                thisNode._cacheMap[key] = object;
-                thisNode._lastUpdate = BaseLib.getNow();
+        let self = this;
+        if(self._state == InfoNode.STATE_NORMAL || self._state == InfoNode.STATE_LOCAL_CACHED) {
+            if (self._type == InfoNode.TYPE_MAP) {
+                self._cacheMap[key] = object;
+                self._lastUpdate = BaseLib.getNow();
                 BaseLib.asynCall(function() {
-                    onComplete(thisNode,ErrorCode.RESULT_OK,key);
+                    onComplete(self,ErrorCode.RESULT_OK,key);
                 });
                 return ;
-                let request = thisNode._owner._client.NewRequest();
-                function onSetOK(ret,nodekey,hkey,ver) {
+                let request = self._owner._client.NewRequest();
+                let onSetOK = function(ret,nodekey,hkey,ver) {
                     if(ret == ErrorCode.RESULT_OK) {
-                        thisNode._cacheMap[key] = object;
-                        thisNode._cacheMapInfo[key] = {"version":ver};
-                        thisNode._version = ver;
-                        thisNode._lastUpdate = BaseLib.getNow();
+                        self._cacheMap[key] = object;
+                        self._cacheMapInfo[key] = {"version":ver};
+                        self._version = ver;
+                        self._lastUpdate = BaseLib.getNow();
                         if(onComplete) {
-                            onComplete(thisNode,ret,hkey);
+                            onComplete(self,ret,hkey);
                         }
-                        BX_INFO("update map " + thisNode._nodeKey + ":" + key +" OK,version:" + ver);
+                        BX_INFO("update map " + self._nodeKey + ":" + key +" OK,version:" + ver);
                     } else {
-                        BX_WARN("update map " + thisNode._nodeKey + ":" + key +" error:" + ret + ",version:" + ver);
-                        onComplete(thisNode,ret,hkey);
+                        BX_WARN("update map " + self._nodeKey + ":" + key +" error:" + ret + ",version:" + ver);
+                        onComplete(self,ret,hkey);
                     }
-                }
+                };
                 let keyVersion = -1;
-                if(thisNode._cacheMapInfo[key]) {
-                    keyVersion = thisNode._cacheMapInfo[key].version;
+                if(self._cacheMapInfo[key]) {
+                    keyVersion = self._cacheMapInfo[key].version;
                 }
-                request.SetHashValue(thisNode._nodeKey,encodeURIComponent(key),JSON.stringify(object),-1,onSetOK);
-                thisNode._owner._client.Request(request);
+                request.SetHashValue(self._nodeKey,encodeURIComponent(key),JSON.stringify(object),-1,onSetOK);
+                self._owner._client.Request(request);
             }
         } else {
-            BX_ERROR("cann't update map " + key + ",error type or error state " + this._type + " " + this._state);
+            BX_ERROR("cann't update map " + key + ",error type or error state " + self._type + " " + self._state);
         }
     }
     mapGetClone() {
-        if(this._state == InfoNode.STATE_NORMAL || this._state == InfoNode.STATE_LOCAL_CACHED) {
-            if(this._type == InfoNode.TYPE_MAP) {
-                return this._cacheMap;
+        let self = this;
+        if(self._state == InfoNode.STATE_NORMAL || self._state == InfoNode.STATE_LOCAL_CACHED) {
+            if(self._type == InfoNode.TYPE_MAP) {
+                return self._cacheMap;
             }
         }
     }
     mapClean(onComplete) {
-        let thisNode = this;
-                thisNode._cacheMap = {};
-                thisNode._lastUpdate = BaseLib.getNow();
+        let self = this;
+                self._cacheMap = {};
+                self._lastUpdate = BaseLib.getNow();
                 BaseLib.asynCall(function() {
-                    onComplete(thisNode,ErrorCode.RESULT_OK);
+                    onComplete(self,ErrorCode.RESULT_OK);
                 });
                 return ;
-        let request = thisNode._owner._client.NewRequest();
-        function onCleanOK(ret,nodekey,hkey,ver) {
-            if(ret == ErrorCode.RESULT_OK) {
-                thisNode._cacheMap = {};
-                thisNode._cacheMapInfo = {}
-                thisNode._version = ver;
-                thisNode._lastUpdate = BaseLib.getNow();
-                if(onComplete) {
-                    onComplete(thisNode,ret);
-                }
-            } else {
-                BX_ERROR("clean map " + thisNode._nodeKey + " error:" + ret);
-                onComplete(thisNode,ret);
-            }
-        }
-        request.SetHashValue(thisNode._nodeKey,null,null,-1,onCleanOK);
-        thisNode._owner._client.Request(request);
     }
 }
 InfoNode.TYPE_OBJECT = 0;
@@ -1560,6 +1592,7 @@ InfoNode.STATE_LOCAL_CACHED = 1;
 InfoNode.STATE_NORMAL = 2;
 InfoNode.STATE_SYNC = 3;
 InfoNode.STATE_ERROR = 4;
+
 class KnowledgeManager {
     constructor(kHost,appid,apptoken,timeout) {
         this._cacheNode = {};
@@ -1573,65 +1606,75 @@ class KnowledgeManager {
         this._updateToken(apptoken);
     }
     initFromLocalPath(localPath) {
-        this._fs = require("fs");
-        this._localPath = localPath;
-        this._localRootTree = JSON.parse(fs.readFileSync(localPath,"utf8"));
-        for(let k in this._localRootTree) {
-            let kobj = this._localRootTree[k];
-            let aNode = new InfoNode(this,k,InfoNode.TYPE_OBJECT);
+        let self = this;
+        self._fs = require("fs");
+        self._localPath = localPath;
+        self._localRootTree = JSON.parse(fs.readFileSync(localPath,"utf8"));
+        for(let k in self._localRootTree) {
+            let kobj = self._localRootTree[k];
+            let aNode = new InfoNode(self,k,InfoNode.TYPE_OBJECT);
             aNode.loadFromKObject(kobj);
-            this.addknowledgeKey(k,aNode);
+            self.addknowledgeKey(k,aNode);
         }
     }
     _updateToken(newToken) {
-        this._token = newToken;
-        this._client = new KServerXHRClient({
-            "url" : this._host,
-            "appid" : this._appid,
-            "token" : this._token,
-            "timeout" : this._timeout
+        let self = this;
+        self._token = newToken;
+        self._client = new KServerXHRClient({
+            "url" : self._host,
+            "appid" : self._appid,
+            "token" : self._token,
+            "timeout" : self._timeout
         });
-        console.log(this._client);
+        console.log(self._client);
+    }
+    stop(){
+        let self = this;
+        if(self._client){
+            self._client.Stop();
+        }
     }
     getState() {
-        return this._state;
+        let self = this;
+        return self._state;
     }
     dependKnowledge(key,nodeType,options) {
-        this._knowKnowledges [key] = {"key":key,"nodeType":nodeType};
-        let kinfo = {"key":key,"nodeType":nodeType,"isNeedSync":true,"options":options};;
-        this._depends[key] = kinfo;
-        if(this._state == KnowledgeManager.STATE_READY) {
-            this._state = KnowledgeManager.STATE_NEED_SYNC;
-        } else if(this._state== KnowledgeManager.STATE_SYNCING) {
-            this._syncQueue = this._syncQueue || [];
-            this._syncQueue.push(kinfo);
+        let self = this;
+        self._knowKnowledges [key] = {"key":key,"nodeType":nodeType};
+        let kinfo = {"key":key,"nodeType":nodeType,"isNeedSync":true,"options":options};
+        self._depends[key] = kinfo;
+        if(self._state == KnowledgeManager.STATE_READY) {
+            self._state = KnowledgeManager.STATE_NEED_SYNC;
+        } else if(self._state== KnowledgeManager.STATE_SYNCING) {
+            self._syncQueue = self._syncQueue || [];
+            self._syncQueue.push(kinfo);
         }
     }
     ready(onReady) {
-        let thisKM = this;
-        if(this._state == KnowledgeManager.STATE_NEED_SYNC) {
-            this._state = KnowledgeManager.STATE_SYNCING
-            this._otherOnReady = new Array();
-        } else if(this._state == KnowledgeManager.STATE_SYNCING){
-            this._otherOnReady.push(onReady);
+        let self = this;
+        if(self._state == KnowledgeManager.STATE_NEED_SYNC) {
+            self._state = KnowledgeManager.STATE_SYNCING;
+            self._otherOnReady = new Array();
+        } else if(self._state == KnowledgeManager.STATE_SYNCING){
+            self._otherOnReady.push(onReady);
             return;
         } else {
             onReady(true);
             return;
         }
         function _startSync() {
-            thisKM._syncQueue = thisKM._syncQueue || [];
-            for(let key in thisKM._depends) {
-                let info = thisKM._depends[key];
+            self._syncQueue = self._syncQueue || [];
+            for(let key in self._depends) {
+                let info = self._depends[key];
                 if(info.isNeedSync) {
-                    thisKM._syncQueue.push(info);
+                    self._syncQueue.push(info);
                 }
             }
-            thisKM._depends = {};
-            let km = thisKM;
+            self._depends = {};
+            let km = self;
             function doSync() {
-                if(thisKM._syncQueue.length > 0) {
-                    let _info = thisKM._syncQueue.pop();
+                if(self._syncQueue.length > 0) {
+                    let _info = self._syncQueue.pop();
                     let kInfo = new InfoNode(km,_info.key,_info.nodeType);
                     kInfo.sync(function(infoNode,resultCode) {
                         if(resultCode == ErrorCode.RESULT_OK) {
@@ -1640,19 +1683,23 @@ class KnowledgeManager {
                             BX_WARN("sync knowledge " + infoNode._nodeKey + " return " + resultCode );
                         }
                         doSync();
-                    })
+                    });
                 } else {
-                    thisKM._state = KnowledgeManager.STATE_READY;
+                    self._state = KnowledgeManager.STATE_READY;
                     if(onReady) {
-                        BaseLib.asynCall(function(){onReady(true)});
+                        BaseLib.asynCall(function(){
+                            onReady(true);
+                        });
                     }
-                    if(thisKM._otherOnReady) {
-                        for(let i=0;i<thisKM._otherOnReady.length;++i) {
-                            let onReadyFunc = thisKM._otherOnReady[i];
-                            BaseLib.asynCall(function(){onReadyFunc(true)});
+                    if(self._otherOnReady) {
+                        for(let i=0;i<self._otherOnReady.length;++i) {
+                            let onReadyFunc = self._otherOnReady[i];
+                            BaseLib.asynCall(function(){
+                                onReadyFunc(true);
+                            });
                         }
                     }
-                    thisKM._otherOnReady = null;
+                    self._otherOnReady = null;
                 }
             }
             doSync();
@@ -1660,13 +1707,16 @@ class KnowledgeManager {
         _startSync();
     }
     addknowledgeKey(key,info) {
-        this._cacheNode[key] = info;
+        let self = this;
+        self._cacheNode[key] = info;
     }
     removeknowledgeKey(key) {
-        delete this._knowledge
+        let self = this;
+        delete self._knowledge;
     }
     _getRootKeyList(onComplete) {
-        let request = this._client.NewRequest();
+        let self = this;
+        let request = self._client.NewRequest();
         request.GetHashValue(null,null,-1,function(ret, key, hkey, valueList, ver) {
             if(ret == 0) {
                 onComplete(ret,valueList.split(","));
@@ -1674,10 +1724,11 @@ class KnowledgeManager {
                 onComplete(ret,null);
             }
         });
-        this._client.Request(request);
+        self._client.Request(request);
     }
     _createObjectKnowledge(kid,obj,onComplete) {
-         let request = this._client.NewRequest();
+        let self = this;
+         let request = self._client.NewRequest();
          request.SetValue(kid,obj,-1,function(ret,key,ver) {
                 if(ret != ErrorCode.RESULT_OK) {
                     onComplete(ret,key);
@@ -1685,10 +1736,11 @@ class KnowledgeManager {
                     onComplete(ret,key);
                 }
         });
-        this._client.Request(request);
+        self._client.Request(request);
     }
     _mapClean(kid,onComplete) {
-        let request = this._client.NewRequest();
+        let self = this;
+        let request = self._client.NewRequest();
         function onCleanOK(ret,nodekey,hkey,ver) {
             if(ret == ErrorCode.RESULT_OK) {
                 if(onComplete) {
@@ -1699,60 +1751,61 @@ class KnowledgeManager {
             }
         }
         request.SetHashValue(kid,null,null,-1,onCleanOK);
-        this._client.Request(request);
+        self._client.Request(request);
     }
     _deleteObjectKnowledge(kid,onComplete) {
-        let thisKM = this;
-        let request = this._client.NewRequest();
+        let self = this;
+        let request = self._client.NewRequest();
         request.SetValue(kid,null,-1,function(ret,key,ver) {
             if(ret == ErrorCode.RESULT_OK) {
-                let kInfo = thisKM._cacheNode[kid];
+                let kInfo = self._cacheNode[kid];
                 if(kInfo) {
-                    delete thisKM._cacheNode[kid];
+                    delete self._cacheNode[kid];
                 }
                 onComplete(ret,key);
             } else {
                 onComplete(ret,key);
             }
         });
-        this._client.Request(request);
+        self._client.Request(request);
     }
     _createMapKnowledge(kid,onComplete) {
-        let thisKM = this;
-        let request = this._client.NewRequest();
+        let self = this;
+        let request = self._client.NewRequest();
         request.SetHashValue(kid,"fake","{}",-1,function(ret,key) {
             if(ret != ErrorCode.RESULT_OK) {
                 onComplete(ret,key);
             } else {
-                let request2 = thisKM._client.NewRequest();
+                let request2 = self._client.NewRequest();
                 request2.SetHashValue(kid,"fake",null,-1,function(ret,key) {
                     onComplete(ret,key);
                 });
-                thisKM._client.Request(request2);
+                self._client.Request(request2);
             }
         });
-        thisKM._client.Request(request);
+        self._client.Request(request);
     }
     _deleteMapKnowledge(kid,onComplete) {
-        let thisKM = this;
-        let request = this._client.NewRequest();
+        let self = this;
+        let request = self._client.NewRequest();
         request.SetValue(kid,null,-1,function(ret) {
             if(ret == ErrorCode.RESULT_OK) {
-                let kInfo = thisKM._cacheNode[kid];
+                let kInfo = self._cacheNode[kid];
                 if(kInfo) {
-                    delete thisKM._cacheNode[kid];
+                    delete self._cacheNode[kid];
                 }
                 onComplete(ret,kid);
             } else {
                 onComplete(ret,kid);
             }
         });
-        this._client.Request(request);
+        self._client.Request(request);
     }
     getDependsKnowledgeInfo() {
+        let self = this;
         let result = {};
-        for(let k in this._cacheNode) {
-            let aNode = this._cacheNode[k];
+        for(let k in self._cacheNode) {
+            let aNode = self._cacheNode[k];
             if(aNode) {
                 result[k] = aNode._version;
             }
@@ -1760,48 +1813,22 @@ class KnowledgeManager {
         return result;
     }
     applyKnowledgeInfo(kmInfo,onComplete) {
+        let self = this;
         let ret = 0;
         let needSync = false;
         let result = {};
         onComplete();
         return null;
-        for(let k in kmInfo) {
-            let aNode = this._cacheNode[k];
-            if(aNode) {
-                if(aNode._version > kmInfo[k]) {
-                    result[k] = aNode._version;
-                    ret = ret +1;
-                } else if(aNode._version < kmInfo[k]) {
-                    this.dependKnowledge(k,aNode.getType(),null);
-                    needSync = true;
-                    ret = ret +1;
-                }
-            }
-        }
-        let trueOnComplete = null;
-        if(ret == 0) {
-            trueOnComplete = onComplete;
-        }
-        if(needSync) {
-            this.ready(trueOnComplete);
-        } else {
-            if(trueOnComplete) {
-                trueOnComplete();
-            }
-        }
-        if(ret > 0) {
-            return result;
-        }
-        return null;
     }
     getKnowledge(key) {
-        let result = this._cacheNode[key];
+        let self = this;
+        let result = self._cacheNode[key];
         if(result) {
             if(result.getState() == InfoNode.STATE_NORMAL) {
                 return result;
             }
         } else {
-            if(this._knowKnowledges[key] == null) {
+            if(self._knowKnowledges[key] == null) {
                 BX_ERROR("knowledge " + key + " is not in depends list!");
                 return null;
             } else {
@@ -1814,6 +1841,7 @@ class KnowledgeManager {
 KnowledgeManager.STATE_NEED_SYNC = 0;
 KnowledgeManager.STATE_READY = 1;
 KnowledgeManager.STATE_SYNCING = 2;
+
 class Application {
     constructor() {
         this.state = Application.APP_STATE_UNKNOWN;
@@ -1869,24 +1897,25 @@ function setCurrentApp(theApp) {
 function getCurrentApp() {
     return Application._currentApp;
 }
-var AdmZip = require('adm-zip');
+
 class Zip{
     constructor(input) {
-        this.innerZip = new AdmZip(input);
+        this.m_zip = new AdmZip(input);
     }
     dump(){
+        let self = this;
         BX_INFO('============');
         BX_INFO('=>zip entrys:');
         BX_INFO('============');
-        var entrys = this.innerZip.getEntries();
+        var entrys = self.m_zip.getEntries();
         for(var i in entrys){
             BX_INFO('=>entry name:'+entrys[i].entryName);
         }
         BX_INFO('-----------');
     }
     addLocalFolder(localPath,filter) {
-        let innerZip = this.innerZip
-        var localPath = path.normalize(localPath);
+        let self = this;
+        localPath = path.normalize(localPath);
         localPath = localPath.split("\\").join("/");
         if (localPath.charAt(localPath.length - 1) != "/"){
             localPath += "/";
@@ -1902,9 +1931,9 @@ class Zip{
                         }
                     }
                     if (p.charAt(p.length - 1) !== "/") {
-                        innerZip.addFile(p, fs.readFileSync(path), "", 0)
+                        self.m_zip.addFile(p, fs.readFileSync(path), "", 0);
                     } else {
-                        innerZip.addFile(p, new Buffer(0), "", 0)
+                        self.m_zip.addFile(p, new Buffer(0), "", 0);
                     }
                 });
             }
@@ -1913,8 +1942,9 @@ class Zip{
         }
     }
     loadFolderAsync(folder,onSuccess) {
-        this.addLocalFolder(folder);
-        this.innerZip.toBuffer(
+        let self = this;
+        self.addLocalFolder(folder);
+        self.m_zip.toBuffer(
             function(zipData){
                 onSuccess(zipData);
             },
@@ -1926,16 +1956,17 @@ class Zip{
             });
     }
     toBuffer(onsuccess,onfailed){
-        this.innerZip.toBuffer(onsuccess,onfailed);
+        let self = this;
+        self.m_zip.toBuffer(onsuccess,onfailed);
     }
     extractEntryToFolder(entry,targetPath) {
-        let innerZip = this.innerZip;
-        innerZip.extractEntryTo(entry,targetPath,false,true);
+        let self = this;
+        self.m_zip.extractEntryTo(entry,targetPath,false,true);
     }
     extractEntryToAsync(entry,targetPath,callback) {
-        let innerZip = this.innerZip;
+        let self = this;
         var extraPath = targetPath+"_";
-        innerZip.extractEntryTo(entry,extraPath,false,true);
+        self.m_zip.extractEntryTo(entry,extraPath,false,true);
         var subZip = new Zip();
         subZip.addLocalFolder(extraPath);
         subZip.toBuffer(
@@ -1951,20 +1982,21 @@ class Zip{
             });
     }
     readEntryAsync(entryName,callback){
-        let innerZip = this.innerZip;
-        var entry = innerZip.getEntry(entryName);
+        let self = this;
+        var entry = self.m_zip.getEntry(entryName);
         if(entry==null){
             BX_INFO('ERROR:load file filed:'+entryName);
-            callback(1)
+            callback(1);
             return;
         }
-        innerZip.readFileAsync(entry,function(decompressedBuffer){
-            innerZip.readAsTextAsync(entry,function(decompressedText){
+        self.m_zip.readFileAsync(entry,function(decompressedBuffer){
+            self.m_zip.readAsTextAsync(entry,function(decompressedText){
                 callback(0,decompressedText);
             });
         });
     }
     static saveZipDataToFileAsync(zipPath,zipData,callback){
+        let self = this;
         BaseLib.writeFileToAsync(zipPath, zipData, true,function(ret){
             if(ret){
                 callback(0);
@@ -1975,8 +2007,9 @@ class Zip{
         });
     }
 }
+
 class RepositoryPuber{
-    constructor(uid,traceId,token,modulesDir){
+    constructor(uid,traceID,token,modulesDir){
         if(modulesDir == null ){
             BX_ERROR('modules path is not assign.');
             process.exit(1);
@@ -1986,7 +2019,7 @@ class RepositoryPuber{
         }
         this.modulesDir = modulesDir;
         this.uid = uid;
-        this.traceid = traceId;
+        this.traceID = traceID;
         this.token = token;
     }
     searchPackage(dir, result) {
@@ -2010,7 +2043,7 @@ class RepositoryPuber{
             let file = files[index];
             let info = fs.statSync(filePath);
             if(info.isDirectory()) {
-                searchJSFile(filePath,result);
+                self.searchJSFile(filePath,result);
             } else if(file.lastIndexOf('.js') == file.length - 3) {
                 if(file.length > 3) {
                     result.push(filePath);
@@ -2031,8 +2064,8 @@ class RepositoryPuber{
                 }
             }
         } else {
-            BX_ERROR('miss packageID or version or build in config.json')
-            return false
+            BX_ERROR('miss packageID or version or build in config.json');
+            return false;
         }
         return true;
     }
@@ -2057,7 +2090,7 @@ class RepositoryPuber{
         for(let i=0;i<packageList.length;++i) {
             let packageDir = packageList[i];
             BX_INFO('->Start check package dir : ' + packageDir);
-            let configPath = packageDir + '/config.json'
+            let configPath = packageDir + '/config.json';
             let packageInfo = null;
             try{
                 packageInfo = JSON.parse(fs.readFileSync(configPath));
@@ -2081,16 +2114,16 @@ class RepositoryPuber{
                     child_process.execFileSync('node', ['-c', jsfiles[j]]);
                     BX_INFO('check ' + jsfiles[j] + ' OK.');
                 }catch(err) {
-                    BX_ERROR('check ' + jsfiles[j] + ' error.')
+                    BX_ERROR('check ' + jsfiles[j] + ' error.');
                     errorNum = errorNum + 1;
                 }
             }
             for (let moduleID in packageInfo.modules) {
                 let moduleFile = packageInfo.modules[moduleID];
                 try {
-                    fs.statSync(packageDir + '/' + moduleFile)
+                    fs.statSync(packageDir + '/' + moduleFile);
                 } catch (err) {
-                    BX_INFO('>>WARN: module file not found,' + moduleID + ' : ' + packageDir + '/' + moduleFile)
+                    BX_INFO('>>WARN: module file not found,' + moduleID + ' : ' + packageDir + '/' + moduleFile);
                     warNum = warNum + 1;
                 }
             }
@@ -2105,7 +2138,7 @@ class RepositoryPuber{
         };
         return info;
     }
-    createPubPackage(packagesDir,appConfigFile,traceId,token,onSuccess){
+    createPubPackage(packagesDir,appConfigFile,traceID,token,onSuccess){
         let self = this;
         let appInfo = self.loadAppInfo(packagesDir, appConfigFile);
         let pubPackage = {
@@ -2114,7 +2147,7 @@ class RepositoryPuber{
            'uid':self.uid,
            'token':token?token:appInfo.app.token,
            'cmd':'pub',
-           'traceid':traceId
+           'traceid':traceID
         };
         let packageInfos = new Array();
         for(let i=0;i<appInfo.packages.length;++i){
@@ -2123,7 +2156,7 @@ class RepositoryPuber{
                 'id':pkg.info.packageID,
                 'ver':pkg.info.version==null?"":pkg.info.version,
                 'relativepath':pkg.relativepath
-            })
+            });
         }
         pubPackage.body = {
             'packages':packageInfos
@@ -2135,7 +2168,7 @@ class RepositoryPuber{
             pubPackage.body.type='zip';
             pubPackage.body.content = zipData;
             onSuccess(appInfo.app.repositoryHost, pubPackage);
-        })
+        });
     }
     pub(packagesDir,appConfigFile,onComplete){
         if(!path.isAbsolute(packagesDir)){
@@ -2155,7 +2188,7 @@ class RepositoryPuber{
             BX_ERROR('appConfigFile is not exist:'+appConfigFile);
             process.exit(1);
         }
-        self.createPubPackage(packagesDir,appConfigFile,self.traceId,self.token,function(host, pkg){
+        self.createPubPackage(packagesDir,appConfigFile,self.traceID,self.token,function(host, pkg){
             BX_INFO('traceid:'+pkg.traceid+'|'+'post pub request to host:'+host);
             self.pubImpl(host,packagesDir,appConfigFile,pkg,onComplete);
         });
@@ -2184,7 +2217,7 @@ class RepositoryPuber{
         }
         let pkgsMeta = appMeta.packages;
         if(pkgsMeta==null){
-            pkgsMeta = {}
+            pkgsMeta = {};
             meta[app.appid].packages = pkgsMeta;
         }
         let zip = new Zip(app.body.content);
@@ -2196,19 +2229,19 @@ class RepositoryPuber{
                 pkgMeta = {
                     'maxversion':0,
                     'versions':{}
-                }
+                };
                 appMeta.packages[pkg.id] = pkgMeta;
             }
             if(BaseLib.isBlank(pkg.ver)){
                 pkg.ver = BaseLib.inet_ntoa(pkgMeta.maxversion);
             }
-            let pkgvern = BaseLib.inet_aton(pkg.ver)
+            let pkgvern = BaseLib.inet_aton(pkg.ver);
             if(pkgvern>pkgMeta.maxversion){
-                pkgMeta.maxversion = pkgvern
+                pkgMeta.maxversion = pkgvern;
             }
             let pkgVerMeta = pkgMeta.versions[pkg.ver];
             if(pkgVerMeta==null){
-                pkgVerMeta = {}
+                pkgVerMeta = {};
                 pkgMeta.versions[pkg.ver] = pkgVerMeta;
             }
             var pkgEntryName = pkg.relativepath+'/';
@@ -2225,6 +2258,7 @@ class RepositoryPuber{
         onComplete(true,resp,app);
     }
 }
+
 class RepositoryLoader {
     constructor(host,uid,appid,traceid,token,modulesDir){
         this.modulesDir = modulesDir;
@@ -2243,22 +2277,25 @@ class RepositoryLoader {
         self.loadFile(packageid,packagever,'config.json',function(ret,config){
             if(!ret){
                 BX_ERROR('load config.json failed.');
+                onConfig(null);
                 onComplete(false);
                 return;
             }
-            onConfig(config);
-            let count = Object.keys(config.modules).length;
-            let index = 0;
-            let modules = {};
-            for(let moduleKey in config.modules){
-                let filename = config.modules[moduleKey];
-                self.loadFile(packageid,packagever,filename,function(ret,module){
-                    index++;
-                    modules[moduleKey] = module;
-                    if(index==count){
-                        onComplete(true,config,modules);
-                    }
-                });
+            let ignoreContent = onConfig(config);
+            if (!ignoreContent) {
+                let count = Object.keys(config.modules).length;
+                let index = 0;
+                let modules = {};
+                for(let moduleKey in config.modules){
+                    let filename = config.modules[moduleKey];
+                    self.loadFile(packageid,packagever,filename,function(ret,module){
+                        index++;
+                        modules[moduleKey] = module;
+                        if(index==count){
+                            onComplete(true,config,modules);
+                        }
+                    });
+                }
             }
         });
     }
@@ -2291,7 +2328,7 @@ class RepositoryLoader {
         }
         let faliedResp = {
             result:1
-        }
+        };
         let metaFile = path.join(modulesDir,'.meta');
         let resultModule = null;
         do{
@@ -2332,7 +2369,7 @@ class RepositoryLoader {
                 BX_ERROR('missing package version meta');
                 break;
             }
-            let pkgVerMeta = pkgMeta.versions[packagever]
+            let pkgVerMeta = pkgMeta.versions[packagever];
             if(pkgVerMeta==null){
                 BX_ERROR('missing package version meta');
                 break;
@@ -2360,11 +2397,11 @@ class RepositoryLoader {
             }else if(ext=='.js'){
                 resultModule = self.requireEx(modulePath);
             }else{
-                BX_ERROR('UnKnown file type.')
+                BX_ERROR('UnKnown file type.');
             }
         }while(false);
         if(resultModule==null){
-            BX_ERROR('load module failed.')
+            BX_ERROR('load module failed.');
             onComplete(false);
         }else{
             onComplete(true,resultModule);
@@ -2384,6 +2421,7 @@ class RepositoryLoader {
         return m;
     }
 }
+
 class Repository{
     static init(modulesDir){
         Repository.modulesDir = modulesDir;
@@ -2403,6 +2441,7 @@ class Repository{
         return puber;
     }
 }
+
 class XARPackage {
     constructor(xarConfig,ownerRuntime) {
         this.state = XARPackage.XAR_STATE_LOADING;
@@ -2456,10 +2495,11 @@ XARPackage.XAR_STATE_RUNING = 1;
 XARPackage.XAR_STATE_LOADED = 2;
 XARPackage.XAR_STATE_ERROR = 3;
 XARPackage.XAR_STATE_NOTLOAD = 4;
+
 class RuntimeCache {
     constructor(owner) {
         this.m_owenr = owner;
-        this.m_allObjects = {}
+        this.m_allObjects = {};
     }
     setObject(objID, objItem) {
         let newObj = {};
@@ -2493,6 +2533,7 @@ class RuntimeCache {
         }
     }
 }
+
 class RuntimeStorage {
     constructor(owner,baseDir) {
         this.m_owenr = owner;
@@ -2545,26 +2586,148 @@ class RuntimeStorage {
         });
     }
 }
-class Scheduler {
-    constructor(host, uid, token, appid) {
-        this.host = host;
-        this.uid = uid;
-        this.token = token;
-        this.appid = appid;
-    }
-    _info(pkg,msg){
+
+class Scheduler{
+ constructor(host,uid,token,appid){
+  this.host = host;
+  this.uid = uid;
+  this.token = token;
+  this.appid = appid;
+ }
+ _info(pkg,msg){
         return 'traceid:'+pkg.traceid+'|'+msg;
     }
-    selectRuntime(packageInfo, deveiceInfo, callback) {
+    selectRuntime(packageInfo, deveiceInfo, onComplete) {
+        let self = this;
         let req = {
             'cmd': 'selectruntime',
+            'uid': self.uid,
+            'token': self.token,
+            'traceid': BaseLib.createGUID(),
+            'appid': self.appid,
+            'packageid': packageInfo.packageID,
+            'packageinfo': packageInfo
+        };
+        if (deveiceInfo.devicetype) {
+            req.devicetype = deveiceInfo.devicetype;
+        }
+        if (deveiceInfo.deviceability) {
+            req.deviceability = deveiceInfo.deviceability;
+        }
+        let msg = self._info(req,'select runtime, start.');
+        BX_INFO(msg);
+        msg = self._info(req,'select runtime, req:');
+        BX_INFO(msg,req);
+        BaseLib.postJSON(self.host, req, resp => {
+            if ((resp != null) && (resp.result === 0)) {
+                let msg = self._info(req,'select runtime success');
+                BX_INFO(msg,resp.runtime);
+                onComplete(0, resp.runtime);
+            } else {
+                let msg = self._info(req,'select runtime failed.');
+                BX_ERROR(msg);
+                if(resp!=null){
+                    BX_ERROR(self._info(req,'select runtime ret:'+resp.result));
+                }
+                onComplete(1);
+            }
+        });
+    }
+ createEvent(eventID,onComplete) {
+        let self = this;
+        let thisRuntime = getCurrentRuntime();
+  let runtimeInfo = thisRuntime.createRuntimeInfo();
+  let req = {
+            'cmd': 'selectevent',
+            'uid': self.uid,
+            'token': self.token,
+            'traceid': BaseLib.createGUID(),
+            'appid': self.appid,
+            'eventid': eventID,
+            'runtimeInfo':runtimeInfo,
+        };
+        let msg = self._info(req,'select event, start.');
+        BX_INFO(msg);
+        msg = self._info(req,'select event, req:');
+        BX_INFO(msg,req);
+        BaseLib.postJSON(self.host, req, (resp) => {
+            if ((resp != null) && (resp.result === 0)) {
+                let msg = self._info(req,'select event success.');
+                BX_INFO(msg,resp.event);
+                onComplete(0, resp.event);
+            } else {
+                let msg = self._info(req,'select event failed.');
+                BX_ERROR(msg);
+                if(resp!=null){
+                    BX_ERROR(self._info(req,'select event ret:'+resp.result));
+                }
+                onComplete(1);
+            }
+        });
+ }
+ removeEvent(eventID,onComplete) {
+        let self = this;
+        let thisRuntime = getCurrentRuntime();
+        let runtimeInfo = thisRuntime.createRuntimeInfo();
+  let req = {
+   "cmd":"releaseevent",
+   "uid":self.uid,
+   "token":self.token,
+            "traceid":BaseLib.createGUID(),
+   "appid":self.appid,
+   "eventid":eventID,
+            'runtimeInfo':runtimeInfo,
+  };
+  BX_INFO(self._info(req,"do release event..., req:"), req);
+  BaseLib.postJSON(self.host,req,function(resp){
+   if( (resp!==null) && (resp.result===0) ){
+                BX_INFO(self._info(req,'release event success'));
+                onComplete(0,resp.event);
+            }else{
+                BX_ERROR(self._info(req,'ERROR:release event failed.'));
+                if(resp!=null){
+                    BX_ERROR(self._info(req,'release event ret:'+resp.result));
+                }
+                onComplete(1);
+            }
+        });
+ }
+ selectBusForEvent(eventID,onComplete) {
+        let self = this;
+        let thisRuntime = getCurrentRuntime();
+  let runtimeInfo = thisRuntime.createRuntimeInfo();
+  let req = {
+   "cmd":"selectbus",
+   "uid":self.uid,
+   "token":self.token,
+            "traceid":BaseLib.createGUID(),
+   "appid":self.appid,
+   "eventid":eventID,
+            'runtimeInfo':runtimeInfo,
+  };
+  BX_INFO(self._info(req,"do select bus..., req:"), req);
+  BaseLib.postJSON(self.host,req,function(resp){
+   if( (resp!==null) && (resp.result===0) ){
+                BX_INFO(self._info(req,'select bus success'));
+                onComplete(0,resp.bus);
+            }else{
+                BX_ERROR(self._info(req,'ERROR:select bus failed.'));
+                if(resp!=null){
+                    BX_ERROR(self._info(req,'select bus ret:'+resp.result));
+                }
+                onComplete(1);
+            }
+        });
+    }
+    callFunction(functionName, deveiceInfo, onComplete) {
+        let req = {
+            'cmd': 'callfunction',
             'uid': this.uid,
             'token': this.token,
             'traceid': BaseLib.createGUID(),
             'appid': this.appid,
-            'packageid': packageInfo.packageID,
-            'packageinfo': packageInfo,
-        }
+            'functionName': functionName,
+        };
         if (deveiceInfo.devicegroupid) {
             req.devicegroupid = deveiceInfo.devicegroupid
         }
@@ -2574,71 +2737,17 @@ class Scheduler {
         if (deveiceInfo.deviceability) {
             req.deviceability = deveiceInfo.deviceability;
         }
-        let msg = this._info(req,'select runtime, start.');
-        BX_INFO(msg);
-        msg = this._info(req,'select runtime, req:');
-        BX_INFO(msg,req);
+        BX_INFO(this._info(req,'call function, start.'));
+        BX_INFO(this._info(req,'call function, req:'), req);
         BaseLib.postJSON(this.host, req, resp => {
             if ((resp != null) && (resp.result === 0)) {
-                let msg = this._info(req,'select runtime success');
-                BX_INFO(msg);
-                callback(true, resp.runtime);
+                BX_INFO(this._info(req,'call function success'));
+                onComplete(0, resp.return);
             } else {
-                let msg = this._info(req,'select runtime failed.');
-                BX_ERROR(msg);
-                callback(false);
+                BX_ERROR(this._info(req,'call function failed.'));
+                onComplete(1);
             }
-        })
-    }
-    selectEvent(eventid, callback) {
-        let req = {
-            'cmd': 'selectevent',
-            'uid': this.uid,
-            'token': this.token,
-            'traceid': BaseLib.createGUID(),
-            'appid': this.appid,
-            'eventid': eventid
-        }
-        let msg = this._info(req,'select event, start.');
-        BX_INFO(msg);
-        msg = this._info(req,'select event, req:');
-        BX_INFO(msg,req);
-        BaseLib.postJSON(this.host, req, (resp) => {
-            if ((resp != null) && (resp.result === 0)) {
-                let msg = this._info(req,'select event success.');
-                BX_INFO(msg,resp.event);
-                callback(true, resp.event);
-            } else {
-                let msg = this._info(req,'select event failed.');
-                BX_ERROR(msg);
-                callback(false);
-            }
-        })
-    }
-    resumeEvent(eventid, callback) {
-        let req = {
-            'cmd': 'resumeevent',
-            'uid': this.uid,
-            'token': this.token,
-            'traceid': BaseLib.createGUID(),
-            'appid': this.appid,
-            'eventid': eventid
-        }
-        let msg = this._info(req,'resume event, start.');
-        BX_INFO(msg);
-        msg = this._info(req,'resume event, req:');
-        BX_INFO(msg,req);
-        BaseLib.postJSON(this.host, req, (resp) => {
-            if ((resp !== null) && (resp.result === 0)) {
-                let msg = this._info(req,'resume event success.');
-                BX_INFO(msg,resp.event);
-                callback(true, resp.event);
-            } else {
-                let msg = this._info(req,'resume event failed.');
-                BX_ERROR(msg);
-                callback(false);
-            }
-        })
+        });
     }
 }
 function initCurrentRuntime(runtimeRootDir,localKMPath) {
@@ -2674,6 +2783,7 @@ function initCurrentRuntime(runtimeRootDir,localKMPath) {
 function getCurrentRuntime() {
     return Application._currentRuntime;
 }
+
 class RuntimeInfo {
     constructor(runtimeID) {
         this.id = runtimeID;
@@ -2685,6 +2795,7 @@ class RuntimeInfo {
         this.ability = new Array();
     }
 }
+
 class RuntimeInstance {
     constructor(runtimeID,runtimeToken,theApp) {
         this.m_app = theApp;
@@ -2705,7 +2816,10 @@ class RuntimeInstance {
         this.m_allBindStoragePath = {};
         this.m_logger = null;
         let schedulerhost = theApp.getSchedulerHost();
-        this.scheduler = new Scheduler("https://dev.tinyappcloud.com/services/scheduler",this.m_id,this.m_token,this.m_app.getID());
+        this.scheduler = new Scheduler(schedulerhost,this.m_id,this.m_token,this.m_app.getID());
+    }
+    getSchedulerClient(){
+        return this.scheduler;
     }
     initWithInfo(info) {
         this.m_id = info.id;
@@ -2768,7 +2882,9 @@ class RuntimeInstance {
                 result.storages.push(gpath);
             }
         }
-        result.addr.push({"ip":this.m_addr[0].ip, "port":this.m_addr[0].port});
+        if(this.m_addr!=null && this.m_addr.length>0){
+            result.addr.push({"ip":this.m_addr[0].ip, "port":this.m_addr[0].port});
+        }
         result.isOnline = true;
         return result;
     }
@@ -2904,7 +3020,7 @@ class RuntimeInstance {
                             let proxyInfo = xarID + "_proxy";
                             if (xarVersion != "") {
                                 proxyInfo += "|";
-                                proxyInfo += "xarVersion"
+                                proxyInfo += "xarVersion";
                             }
                             BX_INFO("can not load remote package:"+xarInfo+", load proxy package:"+proxyInfo);
                             thisRuntime.loadXARPackage(proxyInfo, onComplete);
@@ -2916,28 +3032,6 @@ class RuntimeInstance {
             });
         };
         tryLoad(0);
-    }
-    createEvent(eventid,onComplete){
-        this.scheduler.selectEvent(eventid,function(ret,event){
-            if(ret){
-                BX_INFO(event);
-                onComplete(ErrorCode.RESULT_OK);
-            }else{
-                onComplete(ErrorCode.RESULT_UNKNOWN);
-                BX_ERROR("select event from scheduler failed.");
-            }
-        });
-    }
-    resumeEvent(eventid,onComplete){
-        this.scheduler.resumeEvent(eventid,function(ret,event){
-            if(ret){
-                BX_INFO(event);
-                onComplete(ErrorCode.RESULT_OK);
-            }else{
-                onComplete(ErrorCode.RESULT_UNKNOWN);
-                BX_ERROR("select event from scheduler failed.");
-            }
-        })
     }
     getRuntimeInfo(runtimeID) {
         let thisRuntime = getCurrentRuntime();
@@ -2955,7 +3049,7 @@ class RuntimeInstance {
     selectRuntimeByFilter(deviceType,deviceAbility,packageInfo,deviceGroupID) {
         let knowledegePath = "";
         if(deviceGroupID) {
-            knowledegePath = "global.runtimes." + deviceGroupID;Info
+            knowledegePath = "global.runtimes." + deviceGroupID;
         } else {
             knowledegePath = "global.runtimes";
         }
@@ -3071,7 +3165,7 @@ class RuntimeInstance {
             if (rule) {
                 let runtimeGroupID = rule["runtime-group"];
                 if (runtimeGroupID) {
-                    console.log("NEED IMP!")
+                    console.log("NEED IMP!");
                 } else {
                     deviceGroupID = rule["device-group"];
                     deviceType = rule["device-type"];
@@ -3093,17 +3187,18 @@ class RuntimeInstance {
                 resultRuntime = thisRuntime.selectRuntimeByFilter(deviceType,deviceAbility,packageInfo,deviceGroupID);
             }
             return resultRuntime;
-        }
+        };
         let selectNewRuntime = function(callback){
-            self.scheduler.selectRuntime(packageInfo,deveiceInfo,function(ret,runtime){
-                if(ret){
-                    callback(runtime);
-                    BX_INFO(runtime);
-                }else{
+            self.scheduler.selectRuntime(packageInfo,deveiceInfo,function(err,runtime){
+                if(err){
                     BX_ERROR("select runtime from scheduler failed.");
+                    return;
+                }else{
+                    BX_INFO("select runtime from scheduler success.");
+                    callback(runtime);
                 }
             });
-        }
+        };
         let resultRuntime = null;
         if (useCache) {
             resultRuntime = selectExsitRuntime();
@@ -3118,20 +3213,6 @@ class RuntimeInstance {
             });
         }
         return;
-    }
-    callFunc(functionName,args,selectKey,traceID,onComplete) {
-        let thisRuntime = getCurrentRuntime();
-        let rpc_args = arguments;
-        let funcObj = BaseLib.parseFunctionName(functionName);
-        if(funcObj.instanceID == null) {
-            thisRuntime.selectTargetRuntime(funcObj.moduleID, selectKey, true, function (targetRuntime) {
-                thisRuntime.postRPCCall(targetRuntime, functionName, rpc_args, traceID, onComplete);
-            });
-        } else {
-            thisRuntime.getRuntimeInfo(funcObj.instanceID,function(targetRuntime){
-                thisRuntime.postRPCCall(targetRuntime,functionName, rpc_args, traceID, onComplete);
-            })
-        }
     }
     postRPCCall(remoteRuntimeInfo,functionname,args,traceID,onComplete) {
         if (remoteRuntimeInfo == null) {
@@ -3166,6 +3247,7 @@ class RuntimeInstance {
         });
     }
 }
+
 class CallChain {
     constructor(parentCC = null,ccid="") {
         let needLogStart = true;
@@ -3212,7 +3294,7 @@ class CallChain {
     }
     logLeave(funcName) {
         this.checkIsEnd();
-        let currentCodeFrame = this.getCurrentCodeFrame()
+        let currentCodeFrame = this.getCurrentCodeFrame();
         if(currentCodeFrame) {
             if(currentCodeFrame.funcName === funcName) {
                 this.m_callStack.pop();
@@ -3233,7 +3315,7 @@ class CallChain {
     }
     logReturn(funcName) {
         this.checkIsEnd();
-        let currentCodeFrame = this.getCurrentCodeFrame()
+        let currentCodeFrame = this.getCurrentCodeFrame();
         if(currentCodeFrame) {
             if(currentCodeFrame.funcName === funcName) {
                 this.m_callStack.pop();
@@ -3288,6 +3370,7 @@ function getCurrentTraceInfo(callChain = null) {
         return result.CCID + "," + result.runtimeID + "," + result.appID;
     };
 }
+
 class DeviceInfo {
     constructor(deviceID) {
         this.id = deviceID;
@@ -3301,6 +3384,7 @@ class DeviceInfo {
     static getDeviceInfo(deviceID,onComplete) {
     }
 }
+
 class Device {
     constructor(deviceID) {
         this.m_id = deviceID;
@@ -3432,6 +3516,7 @@ Device.TYPE_BROWSER_CLIENT = "browser_client";
 Device.TYPE_MOBILE = "mobile_client";
 Device.TYPE_PAD = "pad_client";
 Device.TYPE_MOBILE_WX = "wx_client";
+
 class OwnerUser {
     constructor(userID,userToken) {
         this.m_id = userID;
@@ -3444,6 +3529,7 @@ class OwnerUser {
         return this.m_appList;
     }
 }
+
 class WSReqList {
     constructor() {
         this.m_reqlist = {};
@@ -3458,7 +3544,7 @@ class WSReqList {
         const item = {
             "tick": new Date(),
             "resp": OnResponse,
-        }
+        };
         assert(!this.m_reqlist[seq]);
         this.m_reqlist[seq] = item;
         return req;
@@ -3474,6 +3560,7 @@ class WSReqList {
         }
     }
 }
+
 class WebSocketClient {
     constructor(id, type, addr) {
         this.m_id = id;
@@ -3482,6 +3569,7 @@ class WebSocketClient {
         assert(type === "device" || type === "runtime");
         assert(this.m_addr);
         this.m_reqlist = new WSReqList();
+        this.m_nextBusID = null;
         this.m_opened = false;
         this.onopen = null;
         this.onclose = null;
@@ -3511,6 +3599,9 @@ class WebSocketClient {
         const reqString = JSON.stringify(req);
         this._send(reqString);
     }
+    setNextBusID(busID) {
+        this.m_nextBusID = busID;
+    }
     GetClientList(ctype, OnComplete) {
         const req = this.m_reqlist.Create("get_list", function(resp) {
             if (OnComplete) {
@@ -3523,6 +3614,10 @@ class WebSocketClient {
         });
         req.id = this.m_id;
         req.ctype = ctype;
+        if (this.m_nextBusID) {
+            req.bus_id = this.m_nextBusID;
+            this.m_nextBusID = null;
+        }
         const reqString = JSON.stringify(req);
         this._send(reqString);
     }
@@ -3533,6 +3628,10 @@ class WebSocketClient {
             }
         });
         req.id = id;
+        if (this.m_nextBusID) {
+            req.bus_id = this.m_nextBusID;
+            this.m_nextBusID = null;
+        }
         if (option) {
             req.option = option;
         }
@@ -3546,10 +3645,14 @@ class WebSocketClient {
             }
         });
         req.id = id;
+        if (this.m_nextBusID) {
+            req.bus_id = this.m_nextBusID;
+            this.m_nextBusID = null;
+        }
         const reqString = JSON.stringify(req);
         this._send(reqString);
     }
-    AttachEvent(id, OnComplete) {
+    AttachEvent(id, autoNew, OnComplete) {
         const req = this.m_reqlist.Create("attach_event", function(resp) {
             if (OnComplete) {
                 OnComplete(resp.ret);
@@ -3557,6 +3660,13 @@ class WebSocketClient {
         });
         req.id = id;
         req.src_id = this.m_id;
+        if (autoNew) {
+            req.auto_new = autoNew;
+        }
+        if (this.m_nextBusID) {
+            req.bus_id = this.m_nextBusID;
+            this.m_nextBusID = null;
+        }
         const reqString = JSON.stringify(req);
         this._send(reqString);
     }
@@ -3568,6 +3678,10 @@ class WebSocketClient {
         });
         req.id = id;
         req.src_id = this.m_id;
+        if (this.m_nextBusID) {
+            req.bus_id = this.m_nextBusID;
+            this.m_nextBusID = null;
+        }
         const reqString = JSON.stringify(req);
         this._send(reqString);
     }
@@ -3580,6 +3694,10 @@ class WebSocketClient {
         req.id = id;
         req.param = param;
         req.src_id = this.m_id;
+        if (this.m_nextBusID) {
+            req.bus_id = this.m_nextBusID;
+            this.m_nextBusID = null;
+        }
         const reqString = JSON.stringify(req);
         this._send(reqString);
     }
@@ -3591,6 +3709,10 @@ class WebSocketClient {
         });
         req.id = id;
         req.addr = busAddress;
+        if (this.m_nextBusID) {
+            req.bus_id = this.m_nextBusID;
+            this.m_nextBusID = null;
+        }
         const reqString = JSON.stringify(req);
         this._send(reqString);
     }
@@ -3601,6 +3723,10 @@ class WebSocketClient {
             }
         });
         req.id = id;
+        if (this.m_nextBusID) {
+            req.bus_id = this.m_nextBusID;
+            this.m_nextBusID = null;
+        }
         const reqString = JSON.stringify(req);
         this._send(reqString);
     }
@@ -3635,109 +3761,174 @@ class WebSocketClient {
         }
     }
 }
+
 class GlobalEventManager {
     constructor(km) {
-        this._km = km;
-        this._busClients = {};
-        this._busClientByEventID = {};
-        this._listeners = {};
-        this._cookie = 1024;
+        this.m_km = km;
+        this.m_schedulerClient = getCurrentRuntime().getSchedulerClient();
+        this.m_busClients = {};
+        this.m_busClientByEventID = {};
+        this.m_listeners = {};
+        this.m_cookie = 1024;
     }
-    _getBUSClient(busID,eventID,onComplete) {
-        let result = this._busClients[busID];
-        let This = this;
-        if(result) {
-            onComplete(result,ErrorCode.RESULT_OK);
+    _getEventInfoFromKServer(eventID) {
+        let self = this;
+        let eventInfo = self.m_km.getKnowledge("global.events");
+        if (eventInfo) {
+            let eventObj = eventInfo.mapGet(eventID);
+            return eventObj;
         } else {
-            This._km.dependKnowledge("global.buses",1);
-            This._km.ready(function() {
-                let kInfo = This._km.getKnowledge("global.buses");
-                if(kInfo) {
-                    let busInfo = kInfo.mapGet(busID);
-                    if(busInfo) {
-                        let clientInfo = {};
-                        let busURL = BaseLib.getUrlFromNodeInfo(busInfo);
-                        BX_INFO("create bus to :" + busURL);
-                        clientInfo.client = new WebSocketClient(getCurrentRuntime().getID(), "runtime", busURL);
-                        clientInfo.isAttach = false;
-                        function onClientOpen() {
-                            clientInfo.client.Register(null,function() {
-                                This._busClients[busID]= clientInfo.client;
-                                This._busClientByEventID[eventID] = clientInfo;
-                                BX_INFO("websocket client connected.");
-                                onComplete(clientInfo.client,ErrorCode.RESULT_OK);
-                            });
-                        }
-                        function onClientActive(eventid, srcid, param) {
-                            BX_INFO("bus client onactive:", eventid, srcid, param);
-                            This._onBUSActive(eventID,eventid, srcid, param);
-                        };
-                        function onClientClose(){
-                            BX_WARN("bus client break.")
-                            delete This._busClientByEventID[eventID];
-                        }
-                        clientInfo.client.onopen = onClientOpen;
-                        clientInfo.client.onactive = onClientActive;
-                        clientInfo.client.onclose = onClientClose;
-                        clientInfo.client.Start();
-                        return;
+            BX_ERROR("global event root object is not exist,MUST create this node!!!");
+            return null;
+        }
+    }
+    _getBUSURLFromList(theList) {
+        if (theList) {
+            if (theList.length > 0) {
+                let index = BaseLib.getRandomNum(0, theList.length);
+                return theList[index];
+            }
+        }
+        return "";
+    }
+    _getBUSClientByURL(eventID, busURL, onComplete) {
+        let self = this;
+        let result = self.m_busClients[busURL];
+        if (result) {
+            if (result.state == "CONNECTED") {
+                onComplete(result.client, ErrorCode.RESULT_OK);
+            } else {
+            }
+        } else {
+            let clientInfo = {};
+            clientInfo.state = "INIT";
+            self.m_busClients[busURL] = clientInfo;
+            BX_INFO("create busclient to :" + busURL);
+            clientInfo.client = new WebSocketClient(getCurrentRuntime().getID(), "runtime", busURL);
+            let onClientOpen = function() {
+                clientInfo.client.Register(null, function() {
+                    clientInfo.state = "CONNECTED";
+                    self.m_busClientByEventID[eventID] = clientInfo;
+                    BX_INFO("websocket client connected to " + busURL);
+                    onComplete(clientInfo.client, ErrorCode.RESULT_OK);
+                });
+            };
+            let onClientActive = function(eventID, srcid, param) {
+                self._onBUSActive(eventID, eventID, srcid, param);
+            };
+            let onClientClose = function() {
+                BX_WARN("bus client break.");
+            };
+            clientInfo.client.onopen = onClientOpen;
+            clientInfo.client.onactive = onClientActive;
+            clientInfo.client.onclose = onClientClose;
+            clientInfo.client.Start();
+            return clientInfo;
+        }
+    }
+    _getEventBusClient(eventID, isAutoCreate, onComplete) {
+        let self = this;
+        let clientInfo = self.m_busClientByEventID[eventID];
+        if (clientInfo) {
+            onComplete(clientInfo.client, ErrorCode.RESULT_OK);
+            return;
+        }
+        if (!isAutoCreate) {
+            onComplete(null, ErrorCode.RESULT_NOT_FOUND);
+            return;
+        }
+        let doGetBusClientFromURL = function(busURL) {
+            if (busURL.length == 0) {
+                self.m_schedulerClient.selectBusForEvent(eventID, function(err,busInfo) {
+                    if (err === ErrorCode.RESULT_OK) {
+                        doGetBusClientFromURL(busInfo.busurl);
                     } else {
-                        BX_ERROR("Cann't get bus info. create busClient failed." + busID);
-                        onComplete(null,ErrorCode.RESULT_NOT_FOUND);
+                        onComplete(null, err);
                     }
+                });
+            } else {
+                self._getBUSClientByURL(eventID, busURL, function(busClient, resultCode) {
+                    if (resultCode == ErrorCode.RESULT_OK) {
+                        self.m_busClientByEventID[eventID] = self.m_busClients[busURL];
+                        onComplete(busClient, resultCode);
+                    } else {
+                        onComplete(null, resultCode);
+                    }
+                });
+            }
+        };
+        let eventObj = self._getEventInfoFromKServer(eventID);
+        if (eventObj) {
+            let busURL = "";
+            let useCache = false;
+            if (eventObj.busList) {
+                busURL = self._getBUSURLFromList(eventObj.buslist);
+                useCache = true;
+            }
+            doGetBusClientFromURL(busURL, function(busClient, resultCode) {
+                if (resultCode === ErrorCode.RESULT_OK) {
+                    onComplete(busClient, resultCode);
                 } else {
-                    BX_ERROR("Cann't get bus global.buses. create busClient failed." + busID);
-                    onComplete(null,ErrorCode.RESULT_UNKNOWN);
+                    if (useCache) {
+                        doGetBusClientFromURL("");
+                    } else {
+                        onComplete(null, resultCode);
+                    }
                 }
             });
+            return busURL;
         }
+        return null;
     }
-    _onBUSActive(eventID,eventid, srcid, param) {
+    _onBUSActive(eventID, srcid, param) {
+        let self = this;
         let trueEventID = eventID;
         BX_TRACE(eventID + "active:" + srcid + "," + param);
-        if(eventid == "registerClient" || eventid == "unregisterClient") {
-            trueEventID = eventID + "_listenerChanged" ;
+        if (eventID == "registerClient" || eventID == "unregisterClient") {
+            trueEventID = eventID + "_listenerChanged";
         }
-        let listeners = this._listeners[trueEventID];
-        if(listeners) {
-            for(let i=0;i<listeners.length;++i) {
+        let listeners = self.m_listeners[trueEventID];
+        if (listeners) {
+            for (let i = 0; i < listeners.length; ++i) {
                 let listener = listeners[i];
                 listener.func(param);
             }
         }
     }
-    _attachInnerListener(eventID,func) {
-        let listeners = this._listeners[eventID];
-        if(listeners == null) {
+    _attachInnerListener(eventID, func) {
+        let self = this;
+        let listeners = self.m_listeners[eventID];
+        if (listeners == null) {
             listeners = new Array();
-            this._listeners[eventID] = listeners;
+            self.m_listeners[eventID] = listeners;
         }
-        this._cookie = this._cookie + 1;
+        self.m_cookie = self.m_cookie + 1;
         let listener = {};
-        listener.cookie = this._cookie;
+        listener.cookie = self.m_cookie;
         listener.func = func;
         listeners.push(listener);
         return listener.cookie;
     }
-    _detachInnerListener(eventID,cookie) {
-        let listeners = this._listeners[eventID];
-        if(listeners == null) {
+    _detachInnerListener(eventID, cookie) {
+        let self = this;
+        let listeners = self.m_listeners[eventID];
+        if (listeners == null) {
             return null;
         }
-        for(let i=0;i<listeners.length;++i) {
-            if(listeners[i].cookie == cookie) {
-                listeners.splice(i,1);
+        for (let i = 0; i < listeners.length; ++i) {
+            if (listeners[i].cookie == cookie) {
+                listeners.splice(i, 1);
                 return listeners;
             }
         }
         return listeners;
     }
     isEventCreated(eventID) {
-        console.log("isEventCreated?")
-        let eventInfo = this._km.getKnowledge("global.events");
-        if(eventInfo) {
+        let self = this;
+        let eventInfo = self.m_km.getKnowledge("global.events");
+        if (eventInfo) {
             let eventObj = eventInfo.mapGet(eventID);
-            if(eventObj) {
+            if (eventObj) {
                 return ErrorCode.RESULT_OK;
             } else {
                 return ErrorCode.RESULT_NOT_FOUND;
@@ -3747,103 +3938,112 @@ class GlobalEventManager {
             return ErrorCode.RESULT_UNKNOWN;
         }
     }
-    attach(eventID,func,onComplete) {
-        let This = this;
+    attach(eventID, func, onComplete) {
+        let self = this;
         let busClient = null;
-        let clientInfo = This._busClientByEventID[eventID];
-        if(clientInfo) {
+        let clientInfo = self.m_busClientByEventID[eventID];
+        if (clientInfo) {
             busClient = clientInfo.client;
         }
         let attachResult = ErrorCode.RESULT_NOT_FOUND;
-        if(busClient == null) {
-            This._km.dependKnowledge("global.events",1);
-            This._km.ready(function(){
-                let eventInfo = This._km.getKnowledge("global.events");
-                if(eventInfo) {
-                    let eventObject = eventInfo.mapGet(eventID);
-                    if(eventObject) {
-                        This._getBUSClient(eventObject.busID,eventID,function(busClient,result) {
-                            if(result == ErrorCode.RESULT_OK) {
-                                busClient.AttachEvent(eventID,function(ret) {;
-                                    if(ret == 0) {
-                                        This._busClientByEventID[eventID].isAttach = true;
-                                        let cookie = This._attachInnerListener(eventID,func);
-                                        onComplete(ErrorCode.RESULT_OK,cookie);
-                                    } else {
-                                        onComplete(ret,0);
-                                    }
-                                });
-                            } else {
-                                BX_WARN("cann't get bus client.eventID:" + eventID);
-                                onComplete(result,0);
-                            }
-                        });
-                        return;
+        let doAttach = function(bclient, ret) {
+            if (ret == ErrorCode.RESULT_OK) {
+                bclient.AttachEvent(eventID, null, function(ret) {
+                    if (ret == 0) {
+                        let cookie = self._attachInnerListener(eventID, func);
+                        onComplete(ErrorCode.RESULT_OK, cookie);
                     } else {
-                        BX_WARN("cann't read event object,eventID:" + eventID);
+                        onComplete(ret, 0);
                     }
-                } else {
-                    BX_WARN("cann't read event info,eventID:" + eventID);
-                }
+                });
+            } else {
+                BX_WARN("cann't get bus client.eventID:" + eventID);
+                onComplete(ret, 0);
+            }
+        };
+        if (busClient === null) {
+            self._getEventBusClient(eventID, true, function(newClient, ret) {
+                doAttach(newClient, ret);
             });
-            return;
         } else {
-            busClient.AttachEvent(eventID,function(ret) {
-                if(ret == 0) {
-                    let cookie = This._attachInnerListener(eventID,func);
-                    onComplete(ErrorCode.RESULT_OK,cookie);
-                } else {
-                    onComplete(ret,0);
-                }
-            });
-            return;
+            doAttach(busClient, ErrorCode.RESULT_OK);
         }
     }
-    detach(eventID,cookie) {
-        let This = this;
-        let listener = This._detachInnerListener(eventID,cookie);
-        if(listener == null) {
+    detach(eventID, cookie) {
+        let self = this;
+        let listener = self._detachInnerListener(eventID, cookie);
+        if (listener == null) {
             return ErrorCode.RESULT_NOT_FOUND;
         }
-        if(listener.length < 1) {
-            delete This._listeners[eventID];
+        if (listener.length < 1) {
+            delete self.m_listeners[eventID];
             let busClient = null;
-            let clientInfo = This._busClientByEventID[eventID];
-            if(clientInfo) {
+            let clientInfo = self.m_busClientByEventID[eventID];
+            if (clientInfo) {
                 busClient = clientInfo.client;
             }
-            if(busClient) {
-                busClient.DetachEvent(eventID,function() {});
-                delete This._busClientByEventID[eventID];
-                delete This._busClients[busClient.GetID()];
+            if (busClient) {
+                busClient.DetachEvent(eventID, function() {
+                    self.m_schedulerClient.detachEvent(eventID);
+                });
             } else {
-                BX_WARN("Cann't found busClient?");
+                BX_WARN("Cann't found busClient at detach " + eventID);
             }
         }
         return ErrorCode.RESULT_OK;
     }
-    attachListenerChanged(eventID,func,onComplete) {
-        let This = this;
+    fireEvent(eventID, params) {
+        let self = this;
+        self._getEventBusClient(eventID, true, function(newClient) {
+            if (newClient) {
+                newClient.ActiveEvent(eventID, params);
+            } else {
+            }
+        });
+    }
+    createEvent(eventID, onComplete) {
+        let self = this;
+        let eventObj = self._getEventInfoFromKServer(eventID);
+        if (eventObj) {
+            onComplete(ErrorCode.RESULT_ALREADY_EXIST);
+        } else {
+            self.m_schedulerClient.createEvent(eventID, function(err,event) {
+                onComplete(err);
+            });
+        }
+        self.m_km.dependKnowledge("global.events", 1);
+        self.m_km.ready(function() {});
+        return;
+    }
+    removeEvent(eventID, onComplete) {
+        let self = this;
+        self.m_schedulerClient.removeEvent(eventID, function(err,event) {
+            onComplete(err);
+        });
+        return;
+    }
+    attachListenerChanged(eventID, func, onComplete) {
+        let self = this;
         let busClient = null;
-        let clientInfo = This._busClientByEventID[eventID];
-        if(clientInfo) {
+        let clientInfo = self.m_busClientByEventID[eventID];
+        if (clientInfo) {
             busClient = clientInfo.client;
         }
         let attachResult = ErrorCode.RESULT_NOT_FOUND;
-        if(busClient == null) {
-            let eventInfo = this._km.getKnowledge("global.events");
-            if(eventInfo) {
+        if (busClient == null) {
+            let eventInfo = self.m_km.getKnowledge("global.events");
+            if (eventInfo) {
                 let eventObject = eventInfo.mapGet(eventID);
-                if(eventObject) {
-                    This._getBUSClient(eventObject.busID,eventID,function(busClient,result) {
-                        if(result == ErrorCode.RESULT_OK) {
-                            busClient.AttachEvent("registerClient",function(){
-                                busClient.AttachEvent("unregisterClient",function(){});
+                if (eventObject) {
+                    self._getBUSClient(eventObject.busID, eventID, function(busClient, result) {
+                        if (result == ErrorCode.RESULT_OK) {
+                            busClient.AttachEvent("registerClient", null, function() {
+                                busClient.AttachEvent("unregisterClient", null, function() {});
                             });
-                            let cookie = This._attachInnerListener(eventID+"_listenerChanged",func);
-                            onComplete(ErrorCode.RESULT_OK,cookie);
+                            let cookie = self._attachInnerListener(eventID + "_listenerChanged", func);
+                            onComplete(ErrorCode.RESULT_OK, cookie);
                         } else {
-                            onComplete(result,0);
+                            onComplete(result, 0);
                         }
                     });
                     return;
@@ -3852,57 +4052,57 @@ class GlobalEventManager {
                 BX_WARN("cann't read event info,eventID:" + eventID);
             }
         } else {
-            busClient.AttachEvent("registerClient",function(){
-                busClient.AttachEvent("unregisterClient",function(){});
+            busClient.AttachEvent("registerClient", null, function() {
+                busClient.AttachEvent("unregisterClient", null, function() {});
             });
-            let cookie = This._attachInnerListener(eventID+"_listenerChanged",func);
-            onComplete(ErrorCode.RESULT_OK,cookie);
+            let cookie = self._attachInnerListener(eventID + "_listenerChanged", func);
+            onComplete(ErrorCode.RESULT_OK, cookie);
             return;
         }
-        onComplete(attachResult,0);
+        onComplete(attachResult, 0);
     }
-    detachListenerChanged(eventID,cookie) {
-        let This = this;
-        let listener = This._detachInnerListener(eventID+"_listenerChanged",cookie);
-        if(listener == null) {
+    detachListenerChanged(eventID, cookie) {
+        let self = this;
+        let listener = self._detachInnerListener(eventID + "_listenerChanged", cookie);
+        if (listener == null) {
             return ErrorCode.RESULT_NOT_FOUND;
         }
-        if(listener.length < 1) {
-            delete This._listeners[eventID];
+        if (listener.length < 1) {
+            delete self.m_listeners[eventID];
             let busClient = null;
-            let clientInfo = This._busClientByEventID[eventID];
-            if(clientInfo) {
+            let clientInfo = self.m_busClientByEventID[eventID];
+            if (clientInfo) {
                 busClient = clientInfo.client;
             }
-            if(busClient) {
-                busClient.DetachEvent("registerClient",function(){});
-                busClient.DetachEvent("unregisterClient",function(){});
-                delete This._busClientByEventID[eventID];
-                delete This._busClients[busClient.GetID()];
+            if (busClient) {
+                busClient.DetachEvent("registerClient", function() {});
+                busClient.DetachEvent("unregisterClient", function() {});
+                delete self.m_busClientByEventID[eventID];
+                delete self.m_busClients[busClient.GetID()];
             } else {
                 BX_WARN("Cann't found busClient?");
             }
         }
         return ErrorCode.RESULT_OK;
     }
-    getListenerList(eventID,onComplete) {
-        let This = this;
+    getListenerList(eventID, onComplete) {
+        let self = this;
         let busClient = null;
-        let clientInfo = This._busClientByEventID[eventID];
-        if(clientInfo) {
+        let clientInfo = self.m_busClientByEventID[eventID];
+        if (clientInfo) {
             busClient = clientInfo.client;
         }
         let attachResult = ErrorCode.RESULT_NOT_FOUND;
-        if(busClient == null) {
-            let eventInfo = this._km.getKnowledge("global.events");
-            if(eventInfo) {
+        if (busClient == null) {
+            let eventInfo = self.m_km.getKnowledge("global.events");
+            if (eventInfo) {
                 let eventObject = eventInfo.mapGet(eventID);
-                if(eventObject) {
-                    This._getBUSClient(eventObject.busID,eventID,function(busClient,result) {
-                        if(result == ErrorCode.RESULT_OK) {
-                            busClient.GetClientList("runtime",onComplete);
+                if (eventObject) {
+                    self._getBUSClient(eventObject.busID, eventID, function(busClient, result) {
+                        if (result == ErrorCode.RESULT_OK) {
+                            busClient.GetClientList("runtime", onComplete);
                         } else {
-                             onComplete(result,null);
+                            onComplete(result, null);
                         }
                     });
                     return;
@@ -3911,122 +4111,58 @@ class GlobalEventManager {
                 BX_WARN("cann't read event info,eventID:" + eventID);
             }
         } else {
-            busClient.GetClientList("runtime",onComplete);
+            busClient.GetClientList("runtime", onComplete);
             return;
-        }
-    }
-    fireEvent(eventID,params) {
-        let This = this;
-        let busClient = null;
-        let clientInfo = This._busClientByEventID[eventID];
-        if(clientInfo) {
-            busClient = clientInfo.client;
-        }
-        if(busClient == null) {
-            let eventInfo = this._km.getKnowledge("global.events");
-            if(eventInfo) {
-                let eventObj = eventInfo.mapGet(eventID);
-                if(eventObj) {
-                    this._getBUSClient(eventObj.busID,eventID,function(busClient,result) {
-                            if(result == ErrorCode.RESULT_OK) {
-                                busClient.ActiveEvent(eventID,params);
-                            }
-                    });
-                }
-            } else {
-                BX_WARN("cann't read event info,eventID:" + eventName);
-            }
-        } else {
-            busClient.ActiveEvent(eventID,params,function(ret) {
-                BX_TRACE("Active Event "+ eventID + " return " + ret);
-            });
-        }
-    }
-    createEvent(eventID,onComplete) {
-        let thisKM = this._km;
-        let thisRuntime = getCurrentRuntime();
-        let This = this;
-        let getBusInfo = function(busid){
-            let kInfo = This._km.getKnowledge("global.buses");
-            let busInfo = null;
-            if(kInfo){
-                busInfo = kInfo.mapGet(busid);
-                return busInfo;
-            }else{
-                return null;
-            }
-        }
-        let eventInfo = thisKM.getKnowledge("global.events" );
-        if(eventInfo) {
-            let eventObj = eventInfo.mapGet(eventID);
-            if(eventObj) {
-                thisKM.dependKnowledge("global.buses",1);
-                thisKM.ready(function() {
-                    let busInfo = getBusInfo(eventObj.busID);
-                    if(busInfo){
-                        if(busInfo.state === BX_BUS_STATE_OFFLINE){
-                            BaseLib.setOnceTimer(function(){
-                               busInfo = getBusInfo(eventObj.busID);
-                               if(busInfo && busInfo.state === BX_BUS_STATE_ONLINE){
-                                    BX_INFO("event aleady exist,eventID:" + eventID);
-                                    onComplete(ErrorCode.RESULT_ALREADY_EXIST);
-                               }else{
-                                    thisRuntime.createEvent(eventID,function(ret){
-                                        onComplete(ret);
-                                    });
-                               }
-                            },30*1000);
-                        }else if(busInfo.state === BX_BUS_STATE_SLEEP){
-                            thisRuntime.resumeEvent(eventID,function(ret){
-                                onComplete(ret);
-                            });
-                        }else if(busInfo.state === BX_BUS_STATE_ONLINE){
-                            BX_INFO("event aleady exist,eventID:" + eventID);
-                            onComplete(ErrorCode.RESULT_ALREADY_EXIST);
-                        }else{
-                            BX_ERROR("event's bus state invalid,eventID:" + eventID);
-                        }
-                    }else{
-                        BX_ERROR("event exist, but bus miss, recreate event,eventID:" + eventID);
-                        thisRuntime.createEvent(eventID,function(ret){
-                            onComplete(ret);
-                        });
-                    }
-                });
-            } else {
-                thisRuntime.createEvent(eventID,function(ret){
-                    onComplete(ret);
-                });
-            }
-        } else {
-            BX_ERROR("global event root object is not exist,MUST create this node!!!");
-            return onComplete(ErrorCode.RESULT_UNKNOWN);
-        }
-    }
-    removeEvent(eventID,onComplete) {
-        let eventInfo = this._km.getKnowledge("global.events");
-        if(eventInfo) {
-            let eventObj = eventInfo.mapGet(eventID);
-            if(eventObj) {
-                eventObj.mapSet(eventID,function(result) {
-                    if(result == ErrorCode.RESULT_OK) {
-                        BX_INFO("event " + eventID + " removed.");
-                        onComplete(ErrorCode.RESULT_OK);
-                    }
-                });
-            } else {
-                onComplete(ErrorCode.RESULT_NOT_FOUND);
-            }
-        } else {
-            BX_ERROR("global event root object is not exist,MUST create this node!!!");
-            onComplete(ErrorCode.RESULT_UNKNOWN);
         }
     }
 }
+
+class SystemEvent
+{
+    constructor(host, uid, token, appid) {
+        this.host = host;
+        this.uid = uid;
+        this.token = token;
+        this.appid = appid;
+    }
+    _info(pkg, msg) {
+        return 'traceid:'+ pkg.traceid + '|' + msg;
+    }
+    attachEvent(eventID, functionName, args, onComplete) {
+        let req = {
+            'cmd': 'attachsystemevent',
+            'uid': this.uid,
+            'token': this.token,
+            'traceid': BaseLib.createGUID(),
+            'appid': this.appid,
+            'eventid': eventid,
+            'args': args
+        }
+        let msg = this._info(req,'attach system event, start.');
+        BX_INFO(msg);
+        msg = this._info(req,'attach system event, req:');
+        BX_INFO(msg, req);
+        BaseLib.postJSON(this.host, req, (resp) => {
+            if ((resp != null) && (resp.result === 0)) {
+                let msg = this._info(req,'select event success.');
+                BX_INFO(msg, resp.event);
+                callback(true, resp.event);
+            } else {
+                let msg = this._info(req,'select event failed.');
+                BX_ERROR(msg);
+                callback(false);
+            }
+        })
+    }
+    detachEvent(eventID, onComplete, ...params) {
+    }
+};
+SystemEvent.EVENT_ID_TIMER = "system.timer";
 module.exports = {};
 module.exports.BaseLib = BaseLib;
 module.exports.ErrorCode = ErrorCode;
 module.exports.KRESULT = KRESULT;
+module.exports.RRESULT = RRESULT;
 module.exports.blog = blog;
 module.exports.BX_SetLogLevel = BX_SetLogLevel;
 module.exports.BX_EnableFileLog = BX_EnableFileLog;
@@ -4052,6 +4188,7 @@ module.exports.getCurrentRuntime = getCurrentRuntime;
 module.exports.getCurrentApp = getCurrentApp;
 module.exports.XARPackage = XARPackage;
 module.exports.RuntimeInstance = RuntimeInstance;
+module.exports.Scheduler = Scheduler;
 module.exports.RuntimeInfo = RuntimeInfo;
 module.exports.getCurrentCallChain = getCurrentCallChain;
 module.exports.setCurrentCallChain = setCurrentCallChain;
@@ -4066,6 +4203,7 @@ module.exports.KServerXHRClient = KServerXHRClient;
 module.exports.InfoNode = InfoNode;
 module.exports.KnowledgeManager = KnowledgeManager;
 module.exports.GlobalEventManager = GlobalEventManager;
+module.exports.SystemEvent = SystemEvent;
 module.exports.initCurrentRuntime = initCurrentRuntime;
 module.exports.Zip = Zip;
 module.exports.Repository = Repository;
