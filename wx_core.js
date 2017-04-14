@@ -49,19 +49,64 @@ const KRESULT = {
     "NOT_EMPTY": 13,
     "HIT_LIMIT": 14,
     "PERMISSION_DENIED" : 15,
-};
+    "LOCK_WRITE" : 16,
+    "LOCK_READ" : 17,
+    "LOCK_NONE" : 18,
+    "LOCK_UNMATCH" : 19,
+}
 const RRESULT = {
-    'SUCCESS':0,
-    'FAILED':1,
-    'UID_NOT_VALID':2,
-    'CHECKTOKEN_FAILED':3,
-    'DB_OPEN_FAILED':4,
-    'DB_OP_FAILED':5,
-    'DB_EXCEPTION':6,
-    'ZIP_WRITE_FAILED':7,
-    'ZIP_FILE_NOT_EXSIT':8,
-    'ZIP_LOAD_FAILED':9,
-    'PKG_NOT_COMMIT':10,
+    'SUCCESS': 0,
+    'FAILED': 1,
+    'UID_NOT_VALID': 300,
+    'CHECKTOKEN_FAILED': 301,
+    'DB_OPEN_FAILED': 302,
+    'DB_OP_FAILED': 303,
+    'DB_EXCEPTION': 304,
+    'ZIP_WRITE_FAILED': 305,
+    'ZIP_FILE_NOT_EXSIT': 306,
+    'ZIP_LOAD_FAILED': 307,
+    'PKG_NOT_COMMIT': 308,
+};
+const SRESULT = {
+    'SUCCESS': 0,
+    'FAILED': 1,
+    'TIMEOUT': 350,
+    'UID_NOT_VALID': 351,
+    'CHECKTOKEN_FAILED': 352,
+    'DEVICE_NOT_FOUND': 353,
+    'RUNTIME_NOT_FOUND': 370,
+    'RUNTIME_SET_ONLINE_FAILED':371,
+    'RUNTIME_PUB_FAILED': 372,
+    'RUNTIME_BIND_STORAGE_FAILED': 373,
+    'RUNTIME_ALLOC_FAILED': 374,
+    'RUNTIME_ALLOC_NO_RESP': 375,
+    'RUNTIME_RESUME_FAILED': 376,
+    'RUNTIME_RESUME_NO_RESP': 377,
+    'RUNTIME_PAUSE_FAILED': 378,
+    'RUNTIME_PAUSE_NO_RESP': 379,
+    'RUNTIME_RELEASE_FAILED': 380,
+    'RUNTIME_RELEASE_NO_RESP': 381,
+    'BUS_NOT_FOUND': 390,
+    'BUS_SET_SET_ONLINE_FAILED':391,
+    'BUS_CREATE_CLIENT_FAILED':392,
+    'BUS_CHAIN_CLIENT_FAILED':393,
+    'BUS_BIND_RUNTIME_FAILED':394,
+    'BUS_ALLOC_FAILED': 395,
+    'BUS_ALLOC_NO_RESP': 396,
+    'BUS_RELEASE_FAILED': 397,
+    'BUS_RELEASE_NO_RESP': 398,
+    'EVENT_NOT_FOUND': 410,
+    'EVENT_ALREADY_EXIST': 411,
+    'EVENT_CREATE_FAILED': 412,
+    'EVENT_PUB_FAILED':413,
+    'EVENT_BUSLIST_EMPTY':414,
+    'EVENT_CLEAN_FAILED':415,
+    'MYSQL_INSTANCEID_NOT_EXISTS': 450,
+    'MYSQL_ALLOC_NO_RESP': 451,
+    'MYSQL_ALLOC_FAILED': 452,
+    'MYSQL_RESUME_NO_RESP': 453,
+    'MYSQL_RESUME_FAILED': 454,
+    'MYSQL_PUB_FAILED': 455,
 };
 
 class BLogWXLocalStorage {
@@ -623,7 +668,7 @@ class SyncLogStorageTarget extends LogStorageTarget {
             console.log("size extend!", this.m_writtenSize);
             this.syncErase();
         }
-        const index = this.m_curIndex++;
+        const index = this.m_curIndex;
         const key = this._nextKey(index);
         let ret = true;
         try {
@@ -633,6 +678,7 @@ class SyncLogStorageTarget extends LogStorageTarget {
             ret = false;
         }
         if (ret) {
+            this.m_curIndex++;
             this.m_writtenSize += logString.length;
             this.m_sizeMap[index] = logString.length;
         }
@@ -653,7 +699,7 @@ let BlogUploader = (function() {
                 let [_, year, month, day, hour, minutes, seconds, milliseconds] = match;
                 let padding_month = '0' + (parseInt(month) - 1);
                 month = padding_month.slice(-2, padding_month.length);
-                return Date.UTC(year, month, day, hour, minutes, seconds, milliseconds || 0);
+                return new Date(year, month, day, hour, minutes, seconds, milliseconds || 0).getTime();
             } else {
                 return null;
             }
@@ -1545,6 +1591,12 @@ class BaseLib {
     static getNow() {
         return new Date().getTime();
     }
+    static replaceAll(stringValue, search, replacement) {
+        if (typeof(stringValue) === 'string') {
+            return stringValue.replace(new RegExp(search, 'g'), replacement);
+        }
+        return null;
+    };
     static parseFunctionName(functionName) {
         let listA = functionName.split("@");
         if (listA.length > 2) {
@@ -2184,6 +2236,8 @@ class KServerRequest {
         this.m_writeListCB = [];
         this.m_watchList = [];
         this.m_watchListCB = [];
+        this.m_lock = null;
+        this.m_lockResp = null;
     }
     GetSeq() {
         return this.m_seq;
@@ -2197,7 +2251,8 @@ class KServerRequest {
     IsEmpty() {
         return (this.m_readList.length === 0
             && this.m_writeList.length === 0
-            && this.m_watchList.length === 0);
+            && this.m_watchList.length === 0
+            && this.m_lock == null);
     }
     CheckKey(key) {
         return true;
@@ -2334,6 +2389,39 @@ class KServerRequest {
             }
         });
     }
+    lock(path, option, onResponse) {
+        assert(path instanceof Array);
+        assert(option.sid);
+        assert(option.type === 'read' || option.type === 'write');
+        const req = {
+            op: 'lock',
+            sid: option.sid,
+            type: option.type,
+            path: path,
+        };
+        if (option.timeout) {
+            req.timeout = req.timeout;
+        }
+        assert(this.m_lock == null);
+        this.m_lock = req;
+        this.m_lockResp = (ret, resp) => {
+            onResponse(ret, resp);
+        };
+    }
+    unlock(lid, sid, onResponse) {
+        assert(lid);
+        assert(sid);
+        const req = {
+            op: 'unlock',
+            sid: sid,
+            lid: lid,
+        };
+        assert(this.m_lock == null);
+        this.m_lock = req;
+        this.m_lockResp = (ret, resp) => {
+            onResponse(ret, resp);
+        };
+    }
     Encode(tcp) {
         const request = {
             "cmd": "req",
@@ -2353,6 +2441,9 @@ class KServerRequest {
         }
         if (this.m_watchList.length > 0) {
             request.watch = this.m_watchList;
+        }
+        if (this.m_lock) {
+            request.lock = this.m_lock;
         }
         const reqData = JSON.stringify(request);
         if (tcp) {
@@ -2387,7 +2478,7 @@ class KServerRequest {
             } else {
                 ret = KRESULT.FAILED;
             }
-            this.ResponseList(this.m_readListCB, ret);
+            this._responseList(this.m_readListCB, ret);
         }
         if (this.m_writeListCB.length > 0) {
             let ret;
@@ -2402,7 +2493,7 @@ class KServerRequest {
             } else {
                 ret = KRESULT.FAILED;
             }
-            this.ResponseList(this.m_writeListCB, ret);
+            this._responseList(this.m_writeListCB, ret);
         }
         if (this.m_watchListCB.length > 0) {
             let ret;
@@ -2417,10 +2508,26 @@ class KServerRequest {
             } else {
                 ret = KRESULT.FAILED;
             }
-            this.ResponseList(this.m_watchListCB, ret);
+            this._responseList(this.m_watchListCB, ret);
+        }
+        if (this.m_lockResp) {
+            let ret = 0;
+            let resp;
+            if (typeof respObj === 'number') {
+                ret = respObj;
+            } else if (typeof respObj === "object") {
+                if (respObj.hasOwnProperty("ret") && respObj.ret !== 0) {
+                    ret = respObj.ret;
+                } else {
+                    resp = respObj.lock;
+                }
+            } else {
+                ret = KRESULT.FAILED;
+            }
+            this.m_lockResp(ret, resp);
         }
     }
-    ResponseList(cbList, respList) {
+    _responseList(cbList, respList) {
         for (let i = 0; i < cbList.length; ++i) {
             let cb = cbList[i];
             if (!cb) {
@@ -2719,6 +2826,7 @@ class KnowledgeManager {
         this._host = kHost;
         this._appid = appid;
         this._timeout = timeout;
+        this._client = null;
         this._updateToken(apptoken);
     }
     _updateToken(newToken) {
@@ -2945,6 +3053,66 @@ class KnowledgeManager {
 KnowledgeManager.STATE_NEED_SYNC = 0;
 KnowledgeManager.STATE_READY = 1;
 KnowledgeManager.STATE_SYNCING = 2;
+"use strict";
+
+class IDGeneratorClient {
+    static create(appID, generatorID, type, kvArgs, onComplete) {
+        let generator = new CenteredIDGeneratorClient(appID, generatorID, type);
+        generator.initialize(kvArgs, function(error) {
+            if (!error) {
+                onComplete(0, generator);
+            } else {
+                onComplete(error, null);
+            }
+        });
+    }
+    constructor(appID, generatorID, type) {
+        this.m_appID = appID;
+        this.m_generatorID = generatorID;
+        this.m_type = type;
+    }
+    get appID() {
+        return this.m_appID;
+    }
+    get generatorID() {
+        return this.m_generatorID;
+    }
+    get type() {
+        return this.m_type;
+    }
+    initialize(kvArgs, onComplete) {
+        let error = 0;
+        onComplete(error);
+    }
+    generate(onComplete) {
+        let error = 0;
+        let id = '';
+        onComplete(error, id);
+    }
+};
+IDGeneratorClient.TYPE_UUID_64 = 'uuid64';
+IDGeneratorClient.TYPE_SEQ_32 = 'seq32';
+
+class CenteredIDGeneratorClient extends IDGeneratorClient {
+    constructor(appID, generatorID, type) {
+        super(appID, generatorID, type);
+    }
+    initialize(kvArgs, onComplete) {
+        let error = 0;
+        let host = kvArgs.host;
+        this.m_getURL = "http://" + `${host}/${type}/${appID}/${generatorID}`;
+        onComplete(error);
+    }
+    generate(onComplete) {
+        BaseLib.getData(this.m_getURL, req, (resp) => {
+            if (resp) {
+                onComplete(resp.error, resp.id);
+            } else {
+                onComplete(1, null);
+            }
+        });
+    }
+};
 
 class Application {
     constructor() {
@@ -3132,15 +3300,47 @@ class RuntimeStorage {
     }
 }
 
-class Scheduler{
- constructor(host,uid,token,appid){
-  this.host = host;
-  this.uid = uid;
-  this.token = token;
-  this.appid = appid;
- }
- _info(pkg,msg){
-        return 'traceid:'+pkg.traceid+'|'+msg;
+class Scheduler {
+    constructor(host, uid, token, appid) {
+        this.host = host;
+        this.uid = uid;
+        this.token = token;
+        this.appid = appid;
+    }
+    _info(pkg, msg) {
+        return 'traceid:' + pkg.traceid + '|' + msg;
+    }
+    selectMySQLInstance(instanceID, runtime, onComplete) {
+        let self = this;
+        let req = {
+            'cmd': 'selectmysql',
+            'uid': self.uid,
+            'token': self.token,
+            'traceid': BaseLib.createGUID(),
+            'appid': self.appid,
+            'instanceid': instanceID
+        };
+        let msg = self._info(req, 'select mysql, start.');
+        BX_INFO(msg);
+        msg = self._info(req, 'select mysql, req:');
+        BX_INFO(msg, req);
+        BaseLib.postJSON(self.host, req, resp => {
+            if(resp == null){
+                let msg = self._info(req, 'select mysql failed, scheduler no response.');
+                BX_ERROR(msg);
+                onComplete(1);
+                return;
+            }
+            if(resp.result !== SRESULT.SUCCESS){
+                let msg = self._info(req, 'select mysql failed, ret:'+resp.result);
+                BX_ERROR(msg);
+                onComplete(1);
+                return;
+            }
+            let msg = self._info(req, 'select mysql success, ret:'+resp.result);
+            BX_INFO(msg, resp.mysql);
+            onComplete(0, resp.mysql);
+        });
     }
     selectRuntime(packageInfo, deveiceInfo, onComplete) {
         let self = this;
@@ -3159,116 +3359,125 @@ class Scheduler{
         if (deveiceInfo.deviceability) {
             req.deviceability = deveiceInfo.deviceability;
         }
-        let msg = self._info(req,'select runtime, start.');
+        let msg = self._info(req, 'select runtime, start.');
         BX_INFO(msg);
-        msg = self._info(req,'select runtime, req:');
-        BX_INFO(msg,req);
+        msg = self._info(req, 'select runtime, req:');
+        BX_INFO(msg, req);
         BaseLib.postJSON(self.host, req, resp => {
-            if ((resp != null) && (resp.result === 0)) {
-                let msg = self._info(req,'select runtime success');
-                BX_INFO(msg,resp.runtime);
-                onComplete(0, resp.runtime);
-            } else {
-                let msg = self._info(req,'select runtime failed.');
+            if(resp==null){
+                let msg = self._info(req, 'select runtime failed, scheduler no response.');
                 BX_ERROR(msg);
-                if(resp!=null){
-                    BX_ERROR(self._info(req,'select runtime ret:'+resp.result));
-                }
                 onComplete(1);
+                return;
             }
+            if(resp.result!==SRESULT.SUCCESS){
+                let msg = self._info(req, 'select runtime failed, ret:'+resp.result);
+                BX_ERROR(msg);
+                onComplete(1);
+                return;
+            }
+            let msg = self._info(req, 'select runtime success, ret:'+resp.result);
+            BX_INFO(msg, resp.runtime);
+            onComplete(0, resp.runtime);
         });
     }
- createEvent(eventID,onComplete) {
+    createEvent(eventID, onComplete) {
         let self = this;
         let thisRuntime = getCurrentRuntime();
-  let runtimeInfo = thisRuntime.createRuntimeInfo();
-  let req = {
+        let runtimeInfo = thisRuntime.createRuntimeInfo();
+        let req = {
             'cmd': 'selectevent',
             'uid': self.uid,
             'token': self.token,
             'traceid': BaseLib.createGUID(),
             'appid': self.appid,
             'eventid': eventID,
-            'runtimeInfo':runtimeInfo,
+            'runtimeInfo': runtimeInfo,
         };
-        let msg = self._info(req,'select event, start.');
+        let msg = self._info(req, 'select event, start.');
         BX_INFO(msg);
-        msg = self._info(req,'select event, req:');
-        BX_INFO(msg,req);
+        msg = self._info(req, 'select event, req:');
+        BX_INFO(msg, req);
         BaseLib.postJSON(self.host, req, (resp) => {
-            if ((resp != null) && (resp.result === 0)) {
-                let msg = self._info(req,'select event success.');
-                BX_INFO(msg,resp.event);
-                onComplete(0, resp.event);
-            } else {
-                let msg = self._info(req,'select event failed.');
+            if(resp==null){
+                let msg = self._info(req, 'select event failed, scheduler no response.');
                 BX_ERROR(msg);
-                if(resp!=null){
-                    BX_ERROR(self._info(req,'select event ret:'+resp.result));
-                }
                 onComplete(1);
+                return;
             }
+            if(resp.result!==SRESULT.SUCCESS &&
+               resp.result!==SRESULT.EVENT_ALREADY_EXIST){
+                let msg = self._info(req, 'select event failed, ret:'+resp.result);
+                BX_ERROR(msg);
+                onComplete(1);
+                return;
+            }
+            let msg = self._info(req, 'select event success, ret:'+resp.result);
+            BX_INFO(msg, resp.event);
+            onComplete(0, resp.event);
         });
- }
- removeEvent(eventID,onComplete) {
+    }
+    removeEvent(eventID, onComplete) {
         let self = this;
         let thisRuntime = getCurrentRuntime();
         let runtimeInfo = thisRuntime.createRuntimeInfo();
-  let req = {
-   "cmd":"releaseevent",
-   "uid":self.uid,
-   "token":self.token,
-            "traceid":BaseLib.createGUID(),
-   "appid":self.appid,
-   "eventid":eventID,
-            'runtimeInfo':runtimeInfo,
-  };
-  BX_INFO(self._info(req,"do release event..., req:"), req);
-  BaseLib.postJSON(self.host,req,function(resp){
-   if( (resp!==null) && (resp.result===0) ){
-                BX_INFO(self._info(req,'release event success'));
-                onComplete(0,resp.event);
-            }else{
-                BX_ERROR(self._info(req,'ERROR:release event failed.'));
-                if(resp!=null){
-                    BX_ERROR(self._info(req,'release event ret:'+resp.result));
-                }
+        let req = {
+            "cmd": "releaseevent",
+            "uid": self.uid,
+            "token": self.token,
+            "traceid": BaseLib.createGUID(),
+            "appid": self.appid,
+            "eventid": eventID,
+            'runtimeInfo': runtimeInfo,
+        };
+        BX_INFO(self._info(req, "do release event..., req:"), req);
+        BaseLib.postJSON(self.host, req, function(resp) {
+            if(resp==null){
+                BX_ERROR(self._info(req, 'ERROR:release event failed, scheduler no response.'));
                 onComplete(1);
+                return;
             }
-        });
- }
- selectBusForEvent(eventID,onComplete) {
-        let self = this;
-        let thisRuntime = getCurrentRuntime();
-  let runtimeInfo = thisRuntime.createRuntimeInfo();
-  let req = {
-   "cmd":"selectbus",
-   "uid":self.uid,
-   "token":self.token,
-            "traceid":BaseLib.createGUID(),
-   "appid":self.appid,
-   "eventid":eventID,
-            'runtimeInfo':runtimeInfo,
-  };
-  BX_INFO(self._info(req,"do select bus..., req:"), req);
-  BaseLib.postJSON(self.host,req,function(resp){
-   if( (resp!==null) && (resp.result===0) ){
-                BX_INFO(self._info(req,'select bus success'));
-                onComplete(0,resp.bus);
-            }else{
-                BX_ERROR(self._info(req,'ERROR:select bus failed.'));
-                if(resp!=null){
-                    BX_ERROR(self._info(req,'select bus ret:'+resp.result));
-                }
+            if(resp.result!==SRESULT.SUCCESS){
+                BX_ERROR(self._info(req, 'ERROR:release event failed, ret:'+resp.result));
                 onComplete(1);
+                return;
             }
+            BX_INFO(self._info(req, 'release event success, ret:'+resp.result));
+            onComplete(0, resp.event);
         });
     }
-    callFunction(functionName, deveiceInfo, onComplete) {
+    selectBusForEvent(eventID, onComplete) {
+        let self = this;
+        let thisRuntime = getCurrentRuntime();
+        let runtimeInfo = thisRuntime.createRuntimeInfo();
+        let req = {
+            "cmd": "selectbus",
+            "uid": self.uid,
+            "token": self.token,
+            "traceid": BaseLib.createGUID(),
+            "appid": self.appid,
+            "eventid": eventID,
+            'runtimeInfo': runtimeInfo,
+        };
+        BX_INFO(self._info(req, "do select bus..., req:"), req);
+        BaseLib.postJSON(self.host, req, function(resp) {
+            if(resp==null){
+                BX_ERROR(self._info(req, 'ERROR:select bus failed, scheduler no response.'));
+                onComplete(1);
+                return;
+            }
+            if(resp.result!==SRESULT.SUCCESS){
+                BX_ERROR(self._info(req, 'ERROR:select bus failed, ret:'+resp.result));
+                onComplete(1);
+                return;
+            }
+            BX_INFO(self._info(req, 'select bus success, ret:'+resp.result));
+            onComplete(0, resp.bus);
+        });
+    }
+     callFunction(functionName, deveiceInfo, onComplete) {
         let req = {
             'cmd': 'callfunction',
-            'uid': this.uid,
-            'token': this.token,
             'traceid': BaseLib.createGUID(),
             'appid': this.appid,
             'functionName': functionName,
@@ -3343,6 +3552,7 @@ class RuntimeInstance {
         this.m_addr = new Array();
         this.m_packages = {};
         this.m_proxyPackages = {};
+        this.m_loadingPackage = {};
         this.m_ownerDevice = null;
         let ktoken = runtimeID+"|"+runtimeToken;
         this.m_knowledegeManager = new KnowledgeManager(theApp.getKnowledgeHost(),theApp.getID(),ktoken,5*1000);
@@ -3386,7 +3596,7 @@ class RuntimeInstance {
         };
         this.m_driverLoadRule["bx.mysql.client"] = {
             "load" : function (did) {
-                return require("mysql");
+                return require("../drivers/mysql").load();
             }
         };
     }
@@ -3952,7 +4162,6 @@ class Device {
         this.m_loginServerInfo = null;
         this.m_logHost = "";
         this.m_clusterHost = null;
-        this.m_dockerStatServer = null;
     }
     getDeviceID() {
         return this.m_id;
@@ -4726,6 +4935,7 @@ module.exports.BaseLib = BaseLib;
 module.exports.ErrorCode = ErrorCode;
 module.exports.KRESULT = KRESULT;
 module.exports.RRESULT = RRESULT;
+module.exports.SRESULT = SRESULT;
 module.exports.blog = blog;
 module.exports.BX_SetLogLevel = BX_SetLogLevel;
 module.exports.BX_EnableFileLog = BX_EnableFileLog;

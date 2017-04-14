@@ -24,10 +24,10 @@ function processModule(packageName, moduleName, moduleFile, packageInfo) {
     let thisRutnime = getCurrentRuntime();
     let rpc_args = Array.prototype.slice.call(arguments);
     rpc_args.pop();
-    thisRutnime.selectTargetRuntime("${packageName}",targetPackageInfo,"",true,function(targetRuntime) {
+    thisRutnime.selectTargetRuntime("${packageName}",targetPackageInfo,true,function(targetRuntime) {
         thisRutnime.postRPCCall(targetRuntime,"${packageName}:${moduleName}::${fn}",rpc_args,"",function(result, errorCode) {
             if (errorCode === 502) {
-                thisRutnime.selectTargetRuntime("${packageName}",targetPackageInfo,"",false,function(targetRuntime) {
+                thisRutnime.selectTargetRuntime("${packageName}",targetPackageInfo,false,function(targetRuntime) {
                     thisRutnime.postRPCCall(targetRuntime,"${packageName}:${moduleName}::${fn}",rpc_args,"",onComplete);
                 });
             } else {
@@ -112,7 +112,7 @@ function processPackage(packagePath, proxyPath) {
     }
 
     const configContent = fs.readFileSync(configPath).toString();
-    
+
     const config = JSON.parse(configContent);
     if(config.storages) {
         delete config["storages"];
@@ -122,7 +122,7 @@ function processPackage(packagePath, proxyPath) {
 
     const proxyDirectory = createProxyDirectory(packagePath, proxyPath);
     saveConfigProxy(proxyDirectory, config);
-    
+
     for (const moduleName in config.modules) {
         const moduleFile = path.join(packagePath, config.modules[moduleName]);
 
@@ -133,7 +133,7 @@ function processPackage(packagePath, proxyPath) {
 
         const out = processModule(packageName, moduleName, moduleFile, configContent);
         // console.log(out);
-       
+
         saveModuleProxy(proxyDirectory, config.modules[moduleName], out);
     }
 }

@@ -14,6 +14,7 @@ var ErrorCode = null;
 var InfoNode = null;
 var BaseLib = null;
 var KnowledgeManager = null;
+var Scheduler = null;
 
 class Tools {
     constructor(args) {
@@ -129,19 +130,19 @@ class Tools {
 
     doPub() {
         let self = this;
-        if (self.m_maindir == null) {
+        if (self.m_maindir === null) {
             console.log("ERROR:maindir is null")
             self.printUsage();
             process.exit(1);
         }
 
-        if (self.m_developerID == null) {
+        if (self.m_developerID === null) {
             console.log("ERROR:uid is null.")
             self.printUsage();
             process.exit(1);
         }
 
-        if (self.m_token == null) {
+        if (self.m_token === null) {
             console.log("ERROR:token is null.")
             self.printUsage();
             process.exit(1);
@@ -194,7 +195,9 @@ class Tools {
         let request = self.m_appKClient.NewRequest();
         request.SetValue("global.app", { "state": "off" }, -1, function(ret, key, ver) {
             if (ret == ErrorCode.RESULT_OK) {
-                console.log(">>App:" + self.m_appInfo.appid + " stoped");
+            	self._execStopFunction(function(ret) {
+                	console.log(">>App:" + self.m_appInfo.appid + " stoped");
+                });
             } else {
                 console.log(">>Stop app:" + self.m_appInfo.appid + " failed, err: " + ret);
             }
@@ -205,16 +208,48 @@ class Tools {
     doStart() {
         let self = this;
         console.log(">>Start app:" + self.m_appInfo.appid);
-        let request = self.m_appKClient.NewRequest();
-        request.SetValue("global.app", { "state": "on" }, -1, function(ret, key, ver) {
-            if (ret == ErrorCode.RESULT_OK) {
-                console.log(">>App:" + self.m_appInfo.appid + " started");
-            } else {
-                console.log(">>Start app:" + self.m_appInfo.appid + " failed, err: " + ret);
-            }
+		self._execStartFunction(function(ret) {
+        	if (ret === ErrorCode.RESULT_OK) {
+        		let request = self.m_appKClient.NewRequest();
+		        request.SetValue("global.app", { "state": "on" }, -1, function(ret, key, ver) {
+		            if (ret == ErrorCode.RESULT_OK) {
+		                console.log(">>App:" + self.m_appInfo.appid + " started");
+		            } else {
+		                console.log(">>Start app:" + self.m_appInfo.appid + " failed, err: " + ret);
+		            }
+		        });
+		        self.m_appKClient.Request(request);
+		    } else {
+		    	console.log(">>Start app:" + this.m_appInfo.appid + " execute start function failed, err: "+ ret);
+		    }
         });
-        self.m_appKClient.Request(request);
     }
+
+    _execStartFunction(onComplete) {
+	    if (!this.m_appInfo.startFunction) {
+	        onComplete(ErrorCode.RESULT_OK);
+	        return;
+	    }
+	    let scheduler = new Scheduler(this.m_appInfo.schedulerHost,
+	    	null, null, this.m_appInfo.appid);
+	    scheduler.callFunction(this.m_appInfo.startFunction, null,
+	    	function(ret, funcReturn) {
+	         	onComplete(ret);
+	    	});
+	}
+
+	_execStopFunction(onComplete) {
+	    if (!this.m_appInfo.stopFunction) {
+	        onComplete(ErrorCode.RESULT_OK);
+	        return;
+	    }
+	    let scheduler = new Scheduler(this.m_appInfo.schedulerHost,
+	    	null, null, this.m_appInfo.appid);
+	    scheduler.callFunction(this.m_appInfo.stopFunction, null,
+	    	function(ret, funcReturn) {
+		         onComplete(ret);
+		    });
+	}
 
     updateKnowledge(onComplete) {
         let self = this;
@@ -367,7 +402,7 @@ function main() {
     InfoNode = core.InfoNode;
     BaseLib = core.BaseLib;
     KnowledgeManager = core.KnowledgeManager;
-
+    Scheduler = core.Scheduler;
     // start
     let tools = new Tools(args);
     tools.init();
