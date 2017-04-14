@@ -49,12 +49,8 @@ const KRESULT = {
     "ALREADY_EXISTS": 12,
     "NOT_EMPTY": 13,
     "HIT_LIMIT": 14,
-    "PERMISSION_DENIED" : 15,
-    "LOCK_WRITE" : 16,
-    "LOCK_READ" : 17,
-    "LOCK_NONE" : 18,
-    "LOCK_UNMATCH" : 19,
-}
+    "PERMISSION_DENIED": 15,
+};
 const RRESULT = {
     'SUCCESS': 0,
     'FAILED': 1,
@@ -102,12 +98,6 @@ const SRESULT = {
     'EVENT_PUB_FAILED':413,
     'EVENT_BUSLIST_EMPTY':414,
     'EVENT_CLEAN_FAILED':415,
-    'MYSQL_INSTANCEID_NOT_EXISTS': 450,
-    'MYSQL_ALLOC_NO_RESP': 451,
-    'MYSQL_ALLOC_FAILED': 452,
-    'MYSQL_RESUME_NO_RESP': 453,
-    'MYSQL_RESUME_FAILED': 454,
-    'MYSQL_PUB_FAILED': 455,
 };
 if (window.localStorage == null){
     console.error('This browser does NOT support localStorage');
@@ -1041,7 +1031,7 @@ class BLogOptions {
     }
     setLevel(level) {
         if (typeof(level) === "string") {
-            this.m_level = BLogLevel[level];
+            this.m_level = BLogLevel[level.toUpperCase()];
         } else if (typeof(level) === "number") {
             this.m_level = level;
         } else {
@@ -1731,10 +1721,12 @@ class BaseLib {
         return false;
     }
     static isArrayContained(a, b){
-        if(!(a instanceof Array) || !(b instanceof Array))
+        if(!(a instanceof Array) || !(b instanceof Array)){
             return false;
-        if(a.length < b.length)
+        }
+        if(a.length < b.length){
             return false;
+        }
         let blen = b.length;
         for(let i=0;i<blen;i++){
             let alen = a.length;
@@ -1750,6 +1742,20 @@ class BaseLib {
             }
         }
         return true;
+    }
+    static mergeArray(a,b) {
+        let result = new Set();
+        if(a) {
+            for(let i=0;0<a.length;++i) {
+                result.add(a[i]);
+            }
+        }
+        if(b) {
+            for(let i=0;0<b.length;++i) {
+                result.add(b[i]);
+            }
+        }
+        return Array.from(result);
     }
     static postJSON(postURL,postBody,onComplete) {
         let strPostBody = JSON.stringify(postBody);
@@ -1938,6 +1944,9 @@ class BaseLib {
         }
     }
     static getNodeInfoFromUrl(url) {
+    }
+    static getClientType(){
+        return "browser";
     }
 }
 BaseLib.domianConfig = {
@@ -2263,8 +2272,6 @@ class KServerRequest {
         this.m_writeListCB = [];
         this.m_watchList = [];
         this.m_watchListCB = [];
-        this.m_lock = null;
-        this.m_lockResp = null;
     }
     GetSeq() {
         return this.m_seq;
@@ -2278,8 +2285,7 @@ class KServerRequest {
     IsEmpty() {
         return (this.m_readList.length === 0
             && this.m_writeList.length === 0
-            && this.m_watchList.length === 0
-            && this.m_lock == null);
+            && this.m_watchList.length === 0);
     }
     CheckKey(key) {
         return true;
@@ -2416,39 +2422,6 @@ class KServerRequest {
             }
         });
     }
-    lock(path, option, onResponse) {
-        assert(path instanceof Array);
-        assert(option.sid);
-        assert(option.type === 'read' || option.type === 'write');
-        const req = {
-            op: 'lock',
-            sid: option.sid,
-            type: option.type,
-            path: path,
-        };
-        if (option.timeout) {
-            req.timeout = req.timeout;
-        }
-        assert(this.m_lock == null);
-        this.m_lock = req;
-        this.m_lockResp = (ret, resp) => {
-            onResponse(ret, resp);
-        };
-    }
-    unlock(lid, sid, onResponse) {
-        assert(lid);
-        assert(sid);
-        const req = {
-            op: 'unlock',
-            sid: sid,
-            lid: lid,
-        };
-        assert(this.m_lock == null);
-        this.m_lock = req;
-        this.m_lockResp = (ret, resp) => {
-            onResponse(ret, resp);
-        };
-    }
     Encode(tcp) {
         const request = {
             "cmd": "req",
@@ -2468,9 +2441,6 @@ class KServerRequest {
         }
         if (this.m_watchList.length > 0) {
             request.watch = this.m_watchList;
-        }
-        if (this.m_lock) {
-            request.lock = this.m_lock;
         }
         const reqData = JSON.stringify(request);
         if (tcp) {
@@ -2505,7 +2475,7 @@ class KServerRequest {
             } else {
                 ret = KRESULT.FAILED;
             }
-            this._responseList(this.m_readListCB, ret);
+            this.ResponseList(this.m_readListCB, ret);
         }
         if (this.m_writeListCB.length > 0) {
             let ret;
@@ -2520,7 +2490,7 @@ class KServerRequest {
             } else {
                 ret = KRESULT.FAILED;
             }
-            this._responseList(this.m_writeListCB, ret);
+            this.ResponseList(this.m_writeListCB, ret);
         }
         if (this.m_watchListCB.length > 0) {
             let ret;
@@ -2535,26 +2505,10 @@ class KServerRequest {
             } else {
                 ret = KRESULT.FAILED;
             }
-            this._responseList(this.m_watchListCB, ret);
-        }
-        if (this.m_lockResp) {
-            let ret = 0;
-            let resp;
-            if (typeof respObj === 'number') {
-                ret = respObj;
-            } else if (typeof respObj === "object") {
-                if (respObj.hasOwnProperty("ret") && respObj.ret !== 0) {
-                    ret = respObj.ret;
-                } else {
-                    resp = respObj.lock;
-                }
-            } else {
-                ret = KRESULT.FAILED;
-            }
-            this.m_lockResp(ret, resp);
+            this.ResponseList(this.m_watchListCB, ret);
         }
     }
-    _responseList(cbList, respList) {
+    ResponseList(cbList, respList) {
         for (let i = 0; i < cbList.length; ++i) {
             let cb = cbList[i];
             if (!cb) {
@@ -2853,7 +2807,6 @@ class KnowledgeManager {
         this._host = kHost;
         this._appid = appid;
         this._timeout = timeout;
-        this._client = null;
         this._updateToken(apptoken);
     }
     _updateToken(newToken) {
@@ -3080,66 +3033,6 @@ class KnowledgeManager {
 KnowledgeManager.STATE_NEED_SYNC = 0;
 KnowledgeManager.STATE_READY = 1;
 KnowledgeManager.STATE_SYNCING = 2;
-"use strict";
-
-class IDGeneratorClient {
-    static create(appID, generatorID, type, kvArgs, onComplete) {
-        let generator = new CenteredIDGeneratorClient(appID, generatorID, type);
-        generator.initialize(kvArgs, function(error) {
-            if (!error) {
-                onComplete(0, generator);
-            } else {
-                onComplete(error, null);
-            }
-        });
-    }
-    constructor(appID, generatorID, type) {
-        this.m_appID = appID;
-        this.m_generatorID = generatorID;
-        this.m_type = type;
-    }
-    get appID() {
-        return this.m_appID;
-    }
-    get generatorID() {
-        return this.m_generatorID;
-    }
-    get type() {
-        return this.m_type;
-    }
-    initialize(kvArgs, onComplete) {
-        let error = 0;
-        onComplete(error);
-    }
-    generate(onComplete) {
-        let error = 0;
-        let id = '';
-        onComplete(error, id);
-    }
-};
-IDGeneratorClient.TYPE_UUID_64 = 'uuid64';
-IDGeneratorClient.TYPE_SEQ_32 = 'seq32';
-
-class CenteredIDGeneratorClient extends IDGeneratorClient {
-    constructor(appID, generatorID, type) {
-        super(appID, generatorID, type);
-    }
-    initialize(kvArgs, onComplete) {
-        let error = 0;
-        let host = kvArgs.host;
-        this.m_getURL = "http://" + `${host}/${type}/${appID}/${generatorID}`;
-        onComplete(error);
-    }
-    generate(onComplete) {
-        BaseLib.getData(this.m_getURL, req, (resp) => {
-            if (resp) {
-                onComplete(resp.error, resp.id);
-            } else {
-                onComplete(1, null);
-            }
-        });
-    }
-};
 
 class Application {
     constructor() {
@@ -3315,59 +3208,51 @@ class Scheduler {
         this.uid = uid;
         this.token = token;
         this.appid = appid;
+        this.runtimeInfo = null;
     }
     _info(pkg, msg) {
         return 'traceid:' + pkg.traceid + '|' + msg;
     }
-    selectMySQLInstance(instanceID, runtime, onComplete) {
+    _getRuntimeInfo(){
         let self = this;
-        let req = {
-            'cmd': 'selectmysql',
-            'uid': self.uid,
-            'token': self.token,
-            'traceid': BaseLib.createGUID(),
-            'appid': self.appid,
-            'instanceid': instanceID
-        };
-        let msg = self._info(req, 'select mysql, start.');
-        BX_INFO(msg);
-        msg = self._info(req, 'select mysql, req:');
-        BX_INFO(msg, req);
-        BaseLib.postJSON(self.host, req, resp => {
-            if(resp == null){
-                let msg = self._info(req, 'select mysql failed, scheduler no response.');
-                BX_ERROR(msg);
-                onComplete(1);
-                return;
-            }
-            if(resp.result !== SRESULT.SUCCESS){
-                let msg = self._info(req, 'select mysql failed, ret:'+resp.result);
-                BX_ERROR(msg);
-                onComplete(1);
-                return;
-            }
-            let msg = self._info(req, 'select mysql success, ret:'+resp.result);
-            BX_INFO(msg, resp.mysql);
-            onComplete(0, resp.mysql);
-        });
+        if(self.runtimeInfo){
+            return self.runtimeInfo;
+        }else{
+            let thisRuntime = getCurrentRuntime();
+            let runtimeInfo = thisRuntime.createRuntimeInfo();
+            self.runtimeInfo = runtimeInfo;
+            return runtimeInfo;
+        }
     }
-    selectRuntime(packageInfo, deveiceInfo, onComplete) {
+    selectRuntime(deviceType, deviceAbility, drivers, storages, onComplete) {
         let self = this;
+        if(deviceType==null){
+            deviceType = '*';
+        }
+        if(deviceAbility==null){
+            deviceAbility = [];
+        }
+        if(drivers==null){
+            drivers = [];
+        }
+        if(storages==null){
+            storages = [];
+        }
+        let runtimeInfo = self._getRuntimeInfo();
         let req = {
             'cmd': 'selectruntime',
             'uid': self.uid,
             'token': self.token,
             'traceid': BaseLib.createGUID(),
             'appid': self.appid,
-            'packageid': packageInfo.packageID,
-            'packageinfo': packageInfo
+            'clientType': runtimeInfo.type,
+            'deviceInfo': {
+                'deviceType':deviceType,
+                'deviceAbility':deviceAbility,
+                'drivers': drivers,
+                'storages': storages
+            },
         };
-        if (deveiceInfo.devicetype) {
-            req.devicetype = deveiceInfo.devicetype;
-        }
-        if (deveiceInfo.deviceability) {
-            req.deviceability = deveiceInfo.deviceability;
-        }
         let msg = self._info(req, 'select runtime, start.');
         BX_INFO(msg);
         msg = self._info(req, 'select runtime, req:');
@@ -3392,14 +3277,14 @@ class Scheduler {
     }
     createEvent(eventID, onComplete) {
         let self = this;
-        let thisRuntime = getCurrentRuntime();
-        let runtimeInfo = thisRuntime.createRuntimeInfo();
+        let runtimeInfo = self._getRuntimeInfo();
         let req = {
             'cmd': 'selectevent',
             'uid': self.uid,
             'token': self.token,
             'traceid': BaseLib.createGUID(),
             'appid': self.appid,
+            'clientType': runtimeInfo.type,
             'eventid': eventID,
             'runtimeInfo': runtimeInfo,
         };
@@ -3428,14 +3313,14 @@ class Scheduler {
     }
     removeEvent(eventID, onComplete) {
         let self = this;
-        let thisRuntime = getCurrentRuntime();
-        let runtimeInfo = thisRuntime.createRuntimeInfo();
+        let runtimeInfo = self._getRuntimeInfo();
         let req = {
             "cmd": "releaseevent",
             "uid": self.uid,
             "token": self.token,
             "traceid": BaseLib.createGUID(),
             "appid": self.appid,
+            'clientType': runtimeInfo.type,
             "eventid": eventID,
             'runtimeInfo': runtimeInfo,
         };
@@ -3457,14 +3342,14 @@ class Scheduler {
     }
     selectBusForEvent(eventID, onComplete) {
         let self = this;
-        let thisRuntime = getCurrentRuntime();
-        let runtimeInfo = thisRuntime.createRuntimeInfo();
+        let runtimeInfo = self._getRuntimeInfo();
         let req = {
             "cmd": "selectbus",
             "uid": self.uid,
             "token": self.token,
             "traceid": BaseLib.createGUID(),
             "appid": self.appid,
+            'clientType': runtimeInfo.type,
             "eventid": eventID,
             'runtimeInfo': runtimeInfo,
         };
@@ -3485,10 +3370,12 @@ class Scheduler {
         });
     }
      callFunction(functionName, deveiceInfo, onComplete) {
+        let runtimeInfo = self._getRuntimeInfo();
         let req = {
             'cmd': 'callfunction',
             'traceid': BaseLib.createGUID(),
             'appid': this.appid,
+            'clientType': runtimeInfo.type,
             'functionName': functionName,
         };
         if (deveiceInfo.devicegroupid) {
@@ -3572,12 +3459,28 @@ function getCurrentRuntime() {
 class RuntimeInfo {
     constructor(runtimeID) {
         this.id = runtimeID;
-        this.appid = "";
         this.category = "runtime";
-        this.addr = new Array();
+        this.type = "";
         this.ownerDeviceID = "";
         this.ownerAppID = "";
-        this.ability = new Array();
+        this.ability = [];
+        this.drivers = [];
+        this.tag = [];
+        this.addr = [];
+        this.storages = [];
+    }
+}
+
+class UserRuntimeInfo{
+    constructor(runtimeInfo){
+        this.id = runtimeInfo.id;
+        this.category = runtimeInfo.category;
+        this.type = runtimeInfo.type;
+        this.ownerDeviceID = runtimeInfo.ownerDeviceID;
+        this.ownerAppID = runtimeInfo.ownerAppID;
+        this.ability = runtimeInfo.ability;
+        this.drivers = runtimeInfo.drivers;
+        this.tag = runtimeInfo.tag;
     }
 }
 
@@ -3586,9 +3489,12 @@ class RuntimeInstance {
         this.m_app = theApp;
         this.m_id = runtimeID;
         this.m_token = runtimeToken;
-        this.m_ability = new Array();
+        this.m_ability = [];
         this.m_runtimeDir = "";
-        this.m_addr = new Array();
+        this.m_addr = [];
+        this.m_advanceState = {};
+        this.m_innerEvent = {};
+        this.m_advanceState["WORK"] = {state:"IDLE",lastChange:BaseLib.getNow()};
         this.m_packages = {};
         this.m_proxyPackages = {};
         this.m_loadingPackage = {};
@@ -3598,6 +3504,7 @@ class RuntimeInstance {
         this.m_driverLoadRule = {};
         this.m_eventManager = null;
         this.m_allCaches = {};
+        this.m_tags = [];
         this.m_allStorages = {};
         this.m_allBindStoragePath = {};
         this.m_logger = null;
@@ -3615,6 +3522,11 @@ class RuntimeInstance {
             for (let i=0; i<info.addr.length;++i) {
                 this.m_addr.push({"ip":info.addr[i].ip, "port":info.addr[i].port});
             }
+        }
+        if(info.tags) {
+            this.m_tags = info.tags;
+        } else {
+            this.m_tags = [];
         }
         if(info.storages) {
             if (info.storages.length > 0) {
@@ -3634,9 +3546,35 @@ class RuntimeInstance {
         };
         this.m_driverLoadRule["bx.mysql.client"] = {
             "load" : function (did) {
-                return require("../drivers/mysql").load();
+                return require("mysql");
             }
         };
+    }
+    on(eventID,func) {
+        let callbackList = this.m_innerEvent[eventID];
+        if(callbackList) {
+            callbackList.push(func);
+        } else {
+            callbackList = [];
+            callbackList.push(func);
+            this.m_innerEvent[eventID] = callbackList;
+        }
+    }
+    _fire(eventID,param) {
+        let callbackList = this.m_innerEvent[eventID];
+        if(callbackList) {
+            let i = 0;
+            let doCallback = () => {
+                if(i < callbackList.length) {
+                    let func = callbackList [i];
+                    func(param,()=>{
+                        i = i + 1;
+                        doCallback();
+                    })
+                }
+            }
+            doCallback();
+        }
     }
     getInstanceID() {
         return this.m_id;
@@ -3657,22 +3595,23 @@ class RuntimeInstance {
         return this.m_app;
     }
     createRuntimeInfo() {
-        let result = new RuntimeInfo(this.m_id);
-        result.ownerDeviceID = this.m_ownerDevice.getDeviceID();
-        result.appid = this.m_app.getID();
-        result.ability = this.m_ability.slice(0);
-        result.deviceType = this.m_ownerDevice.getDeviceType();
+        let info = new RuntimeInfo(this.m_id);
+        info.ownerDeviceID = this.m_ownerDevice.getDeviceID();
+        info.ownerAppID = this.m_app.getID();
+        info.ability = this.m_ability.slice(0);
+        info.tags = this.m_tags.slice(0);
+        info.deviceType = this.m_ownerDevice.getDeviceType();
         if(this.m_allBindStoragePath) {
-            result.storages = [];
+            info.storages = [];
             for(let gpath in this.m_allBindStoragePath) {
-                result.storages.push(gpath);
+                info.storages.push(gpath);
             }
         }
         if(this.m_addr!=null && this.m_addr.length>0){
-            result.addr.push({"ip":this.m_addr[0].ip, "port":this.m_addr[0].port});
+            info.addr.push({"ip":this.m_addr[0].ip, "port":this.m_addr[0].port});
         }
-        result.isOnline = true;
-        return result;
+        info.type = BaseLib.getClientType();
+        return info;
     }
     getGlobalEventManager() {
         if(this.m_eventManager == null) {
@@ -3682,6 +3621,12 @@ class RuntimeInstance {
     }
     getKnowledgeManager () {
         return this.m_knowledegeManager;
+    }
+    getRuntimeAdvanceState() {
+        return this.m_advanceState;
+    }
+    setRuntimeAdvanceState(key,value) {
+        this.m_advanceState[key] = value;
     }
     getRuntimeCache(globalPath) {
         return this.m_allCaches[globalPath];
@@ -3723,38 +3668,46 @@ class RuntimeInstance {
         }
         return null;
     }
-    isXARPackageCanLoad(packageInfo,instanceID) {
-        BX_INFO('current device type:'+getCurrentRuntime().getOwnerDevice().getDeviceType()+', require device type:'+packageInfo.deviceType);
-        if(getCurrentRuntime().getOwnerDevice().getDeviceType() != packageInfo.deviceType) {
-            if(packageInfo.deviceType != "*") {
+    isXARPackageCanLoad(packageInfo,runtimeInfo) {
+        let thisRuntime = this;
+        if(packageInfo.deviceType){
+            let ownerDeviceType = getCurrentRuntime().getOwnerDevice().getDeviceType();
+            if( ownerDeviceType!== packageInfo.deviceType) {
+                if(packageInfo.deviceType !== "*") {
+                    BX_INFO("devicetype not matched, onwerDeviceType:",ownerDeviceType,", packageDeviceType:",packageInfo.deviceType);
+                    return false;
+                }
+            }
+        }
+        if(packageInfo.ability) {
+            if(!BaseLib.isArrayContained(runtimeInfo.ability,packageInfo.ability)) {
+                BX_INFO("ablitity not matched, runtime ability:", runtimeInfo.ability,", package ability:", packageInfo.ability);
                 return false;
             }
         }
-        if(packageInfo.storages) {
-            if(packageInfo.storages.length > 0) {
-                if(getCurrentRuntime().m_allBindStoragePath == null) {
-                    BX_INFO('all bind storage path is null. cannot load package');
-                    return false;
-                }
-                if(getCurrentRuntime().m_allBindStoragePath[packageInfo.storages[0]] == null) {
-                    BX_INFO('all bind package storages path is null. cannot load package');
-                    return false;
-                }
+        if(packageInfo.drivers){
+            if(!BaseLib.isArrayContained(runtimeInfo.drivers,packageInfo.drivers)) {
+                BX_INFO("drivers not matched, runtime drivers:", runtimeInfo.drivers,", package drivers:", packageInfo.drivers);
+                return false;
             }
         }
-        if(packageInfo.caches) {
-            if(packageInfo.caches.length > 0) {
-                if(getCurrentRuntime().m_allCaches == null) {
-                    BX_INFO('all caches is null. cannot load package');
-                    return false;
-                }
-                if(getCurrentRuntime().m_allCaches[packageInfo.caches[0]] == null) {
-                    BX_INFO('all package caches is null. cannot load package');
-                    return false;
-                }
+        let tags = [];
+        if(packageInfo.tags) {
+            tags = packageInfo.tags;
+        }
+        let ruleInfo = thisRuntime.getKnowledgeManager().getKnowledge("global.loadrules");
+        let module_rule = null;
+        if(ruleInfo) {
+            let ruleObj = ruleInfo.objectRead();
+            module_rule = ruleObj[packageInfo.packageID];
+            if(module_rule) {
+                tags = BaseLib.mergeArray(tags,module_rule.tags);
             }
         }
-        BX_INFO('can load package');
+        if(!BaseLib.isArrayContained(runtimeInfo.tags,tags)) {
+            BX_INFO("tags not matched, runtime tags:", runtimeInfo.tags,", package tags:", tags);
+            return false;
+        }
         return true;
     }
     getLoadedXARPackage(xarID) {
@@ -3769,7 +3722,7 @@ class RuntimeInstance {
         }
         return resultPackage;
     }
-    loadXARPackage(xarInfo,onComplete) {
+    loadXARPackage(xarInfo,onComplete,isProxy=false) {
         let resultPackage = null;
         resultPackage = this.m_packages[xarInfo];
         if(resultPackage) {
@@ -3797,6 +3750,7 @@ class RuntimeInstance {
             for(let i = 0;i < loadingXAR.onCompleteFuncs; ++ i) {
                 BaseLib.asynCall(loadingXAR.onCompleteFuncs[i]);
             }
+            delete thisRuntime.m_loadingPackage[xarInfo];
         }
         let repositoryList = this.m_app.repositoryList.slice(0);
         let tryLoad = (pos) => {
@@ -3820,50 +3774,52 @@ class RuntimeInstance {
                     tryLoad(pos+1);
                     return;
                 }
-                xarConfig.baseURL = repositoryHost;
-                if(xarConfig.knowledges) {
-                    for (let i = 0; i < xarConfig.knowledges.length; ++i) {
-                        thisRuntime.m_knowledegeManager.dependKnowledge(xarConfig.knowledges[i].key,xarConfig.knowledges[i].type);
-                    }
+                let isCanload = false;
+                if(isProxy) {
+                    isCanload = true;
                 }
-                if(xarConfig.storages) {
-                    for(let i=0;i<xarConfig.storages.length;++i) {
-                        thisRuntime.enableRuntimeStorage(xarConfig.storages[i]);
-                    }
+                if(!isCanload) {
+                    isCanload = thisRuntime.isXARPackageCanLoad(xarConfig,thisRuntime.createRuntimeInfo())
                 }
-                if(xarConfig.caches) {
-                    for(let i=0;i<xarConfig.caches.length;++i) {
-                        thisRuntime.enableRuntimeCache(xarConfig.caches[i]);
+                if(isCanload) {
+                    xarConfig.baseURL = repositoryHost;
+                    if(xarConfig.knowledges) {
+                        for (let i = 0; i < xarConfig.knowledges.length; ++i) {
+                            thisRuntime.m_knowledegeManager.dependKnowledge(xarConfig.knowledges[i].key,xarConfig.knowledges[i].type);
+                        }
                     }
-                }
-                thisRuntime.m_knowledegeManager.ready(function() {
-                    if(thisRuntime.isXARPackageCanLoad(xarConfig,thisRuntime.m_id)) {
+                    if(xarConfig.storages) {
+                        for(let i=0;i<xarConfig.storages.length;++i) {
+                            thisRuntime.enableRuntimeStorage(xarConfig.storages[i]);
+                        }
+                    }
+                    thisRuntime.m_knowledegeManager.ready(function() {
                         let xarPackage = new XARPackage(xarConfig,thisRuntime);
                         thisRuntime.m_packages[xarInfo] = xarPackage;
                         xarPackage.state = XARPackage.XAR_STATE_RUNING;
                         loader.loadFile(xarID, xarVersion,"onload.js", function(ret, module){
                             if (!ret) {
                                 thisRuntime.m_packages[xarInfo] = null;
-                                onComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
+                                callOnComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
                             } else {
-                                onComplete(xarPackage, module);
+                                callOnComplete(xarPackage, module);
                             }
                         });
-                    }else{
-                        if (!proxyLoaded) {
-                            proxyLoaded = true;
-                            let proxyInfo = xarID + "_proxy";
-                            if (xarVersion != "") {
-                                proxyInfo += "|";
-                                proxyInfo += "xarVersion";
-                            }
-                            BX_INFO("can not load remote package:"+xarInfo+", load proxy package:"+proxyInfo);
-                            thisRuntime.loadXARPackage(proxyInfo, onComplete);
-                        } else {
-                            onComplete(null,ErrorCode.RESULT_NOT_FOUND);
+                    });
+                } else {
+                    if (!proxyLoaded) {
+                        proxyLoaded = true;
+                        let proxyInfo = xarID + "_proxy";
+                        if (xarVersion != "") {
+                            proxyInfo += "|";
+                            proxyInfo += xarVersion;
                         }
+                        BX_WARN("cann't local load package:"+xarInfo+",will load proxy package:"+proxyInfo);
+                        thisRuntime.loadXARPackage(proxyInfo, onComplete,true);
+                    } else {
+                        callOnComplete(null,ErrorCode.RESULT_NOT_FOUND);
                     }
-                });
+                }
             });
         };
         tryLoad(0);
@@ -3881,80 +3837,26 @@ class RuntimeInstance {
         }
         return null;
     }
-    selectRuntimeByFilter(deviceType,deviceAbility,packageInfo,deviceGroupID) {
-        let knowledegePath = "";
-        if(deviceGroupID) {
-            knowledegePath = "global.runtimes." + deviceGroupID;
-        } else {
-            knowledegePath = "global.runtimes";
-        }
+    selectRuntimeByFilter(packageInfo) {
+        let knowledegePath = "global.runtimes";
         let runtimeMap = getCurrentRuntime().getKnowledgeManager().getKnowledge(knowledegePath).mapGetClone();
         let result = [];
         for(let rid in runtimeMap) {
             let runtimeInfo = runtimeMap[rid];
-            let thisDeviceOK = true;
-            if(deviceType) {
-                if(runtimeInfo.type == deviceType) {
-                    thisDeviceOK = true;
-                } else {
-                    thisDeviceOK = false;
-                }
-            }
-            if(thisDeviceOK) {
-                if(deviceAbility) {
-                    if(BaseLib.isArrayContained(runtimeInfo.ability,deviceAbility)) {
-                        thisDeviceOK = true;
-                    } else {
-                        thisDeviceOK = false;
-                    }
-                }
-            }
-            if(thisDeviceOK) {
-                if(packageInfo) {
-                    if(packageInfo.drivers) {
-                        if(packageInfo.drivers.length > 0) {
-                            if(BaseLib.isArrayContained(runtimeInfo.drivers,packageInfo.drivers)) {
-                                thisDeviceOK = true;
-                            } else {
-                                thisDeviceOK = false;
-                            }
-                        }
-                    }
-                }
-            }
-            if(thisDeviceOK) {
-                if(packageInfo) {
-                    if(packageInfo.storages) {
-                        if(packageInfo.storages.length > 0) {
-                            if(runtimeInfo.ability.indexOf("storage") >= 0) {
-                                thisDeviceOK = true;
-                            } else {
-                                thisDeviceOK = false;
-                            }
-                        }
-                    }
-                }
-            }
-            if(thisDeviceOK) {
+            if (this.isXARPackageCanLoad(packageInfo, runtimeInfo)) {
                 result.push(runtimeInfo);
             }
         }
-        if(result.length > 0)
-        {
+        if(result.length > 0) {
             let i= BaseLib.getRandomNum(0,result.length-1);
             return result[i];
         }
         BX_ERROR("ERROR! Cann't select valid runtime!");
         return null;
     }
-    selectRuntimeByStoragePath(storagePathList,deviceGroupID) {
+    selectRuntimeByStoragePath(storagePathList) {
         let thisRuntime = this;
-        let knowledgePath = "";
-        if(deviceGroupID) {
-            knowledgePath = "global.storages." + deviceGroupID;
-        } else {
-            knowledgePath = "global.storages";
-        }
+        let knowledgePath = "global.storages";
         let bindInfo = thisRuntime.getKnowledgeManager().getKnowledge(knowledgePath);
         if(bindInfo) {
             let allMountInfo = bindInfo.mapGetClone();
@@ -3977,11 +3879,10 @@ class RuntimeInstance {
             console.log("ERROR,cann't read knowledge:" + knowledgePath);
         }
     }
-    selectTargetRuntime(packageID,packageInfo,selectKey,useCache,onComplete) {
+    selectTargetRuntime(packageID,packageInfo,useCache,onComplete) {
         let self = this;
         BX_INFO("selectTargetRuntime packageID:" + packageID
             + " packageInfo.version:" + packageInfo.version
-            + " selectKey:" + selectKey
         );
         let thisRuntime = getCurrentRuntime();
         let ruleInfo = thisRuntime.getKnowledgeManager().getKnowledge("global.loadrules");
@@ -3992,39 +3893,27 @@ class RuntimeInstance {
             BX_INFO("cann't read global.loadrules");
             onComplete(null);
         }
-        let deviceGroupID = null;
         let deviceType = null;
         let deviceAbility = null;
         if(module_rule) {
             let rule = module_rule[packageID];
             if (rule) {
-                let runtimeGroupID = rule["runtime-group"];
-                if (runtimeGroupID) {
-                    console.log("NEED IMP!");
-                } else {
-                    deviceGroupID = rule["device-group"];
-                    deviceType = rule["device-type"];
-                    deviceAbility = rule["device-ability"];
-                }
+                deviceType = rule["device-type"];
+                deviceAbility = rule["device-ability"];
             }
         }
-        let deveiceInfo = {
-            "devicegroupid":deviceGroupID,
-            "devicetype":deviceType,
-            "deviceability":deviceAbility
-        };
         let selectExsitRuntime = function(){
             let storagePathList = packageInfo.storages;
             let resultRuntime = null;
             if(storagePathList && storagePathList.length > 0) {
-                resultRuntime = thisRuntime.selectRuntimeByStoragePath(storagePathList,deviceGroupID);
+                resultRuntime = thisRuntime.selectRuntimeByStoragePath(storagePathList);
             }else{
-                resultRuntime = thisRuntime.selectRuntimeByFilter(deviceType,deviceAbility,packageInfo,deviceGroupID);
+                resultRuntime = thisRuntime.selectRuntimeByFilter(packageInfo);
             }
             return resultRuntime;
         };
         let selectNewRuntime = function(callback){
-            self.scheduler.selectRuntime(packageInfo,deveiceInfo,function(err,runtime){
+            self.scheduler.selectRuntime(deviceType,deviceAbility,packageInfo.drivers,packageInfo.storages,function(err,runtime){
                 if(err){
                     BX_ERROR("select runtime from scheduler failed.");
                     return;
@@ -4060,25 +3949,14 @@ class RuntimeInstance {
         let postBody = {};
         postBody.seq = BaseLib.createGUID();
         postBody.src = this.m_id;
+        postBody.dest = remoteRuntimeInfo.id;
         postBody.function_name = functionname;
         postBody.trace_id = traceID;
         postBody.args = BaseLib.encodeParamAsJson(args);
         postBody.knowledges = this.m_knowledegeManager.getDependsKnowledgeInfo();
         postBody.ccid = callChain.getID();
         BaseLib.postJSONCall(postURL,postBody,function(result,errorCode,respBody) {
-            if(errorCode == ErrorCode.RESULT_NEED_SYNC) {
-                BX_INFO("knowledge not sync,need sync before RPC.");
-                for(let k in respBody.knowledges) {
-                    let thisInfo = thisRuntime.m_knowledegeManager.getKnowledge(k);
-                    thisRuntime.m_knowledegeManager.dependKnowledge(k,thisInfo.getType(),null);
-                }
-                thisRuntime.m_knowledegeManager.ready(function() {
-                    BX_INFO("knowledge synced,auto retry RPC");
-                    thisRuntime.postRPCCall(remoteRuntimeInfo,functionname,args,traceID,onComplete);
-                });
-            } else {
-                onComplete(result,errorCode);
-            }
+            onComplete(result,errorCode);
         });
     }
 }
@@ -4086,6 +3964,7 @@ class RuntimeInstance {
 class CallChain {
     constructor(parentCC = null,ccid="") {
         let needLogStart = true;
+        CallChain.s_total ++;
         if(ccid.length <= 0) {
             this.m_id = BaseLib.createGUID();
         } else {
@@ -4155,6 +4034,9 @@ class CallChain {
             if(currentCodeFrame.funcName === funcName) {
                 this.m_callStack.pop();
                 BX_INFO("##RETURN codeframe " + currentCodeFrame.funcName + "@" + currentCodeFrame.id,getCurrentTraceInfo(this));
+                if(this.m_callStack.length == 0){
+                    CallChain.s_total --;
+                }
                 return;
             }
         }
@@ -4173,6 +4055,7 @@ class CallChain {
     }
 }
 CallChain.s_one = null;
+CallChain.s_total = 0;
 function setCurrentCallChain(callChain) {
     CallChain.s_one = callChain;
 }
@@ -4683,7 +4566,8 @@ class GlobalEventManager {
             if (busURL.length == 0) {
                 self.m_schedulerClient.selectBusForEvent(eventID, function(err,busInfo) {
                     if (err === ErrorCode.RESULT_OK) {
-                        doGetBusClientFromURL(busInfo.busurl);
+                        busURL = BaseLib.getUrlFromNodeInfo(busInfo);
+                        doGetBusClientFromURL(busURL);
                     } else {
                         onComplete(null, err);
                     }

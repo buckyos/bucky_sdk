@@ -59,12 +59,8 @@ const KRESULT = {
     "ALREADY_EXISTS": 12,
     "NOT_EMPTY": 13,
     "HIT_LIMIT": 14,
-    "PERMISSION_DENIED" : 15,
-    "LOCK_WRITE" : 16,
-    "LOCK_READ" : 17,
-    "LOCK_NONE" : 18,
-    "LOCK_UNMATCH" : 19,
-}
+    "PERMISSION_DENIED": 15,
+};
 const RRESULT = {
     'SUCCESS': 0,
     'FAILED': 1,
@@ -112,13 +108,1687 @@ const SRESULT = {
     'EVENT_PUB_FAILED':413,
     'EVENT_BUSLIST_EMPTY':414,
     'EVENT_CLEAN_FAILED':415,
-    'MYSQL_INSTANCEID_NOT_EXISTS': 450,
-    'MYSQL_ALLOC_NO_RESP': 451,
-    'MYSQL_ALLOC_FAILED': 452,
-    'MYSQL_RESUME_NO_RESP': 453,
-    'MYSQL_RESUME_FAILED': 454,
-    'MYSQL_PUB_FAILED': 455,
 };
+
+class BLogNodeEnv {
+    platform() {
+        return os.platform();
+    }
+    filterOptions(options) {
+    }
+}
+const BLogEnv = new BLogNodeEnv();
+
+class LinkedListItem {
+    constructor(data, pre, next) {
+        this.m_data = data;
+        this.m_pre = pre;
+        this.m_next = next;
+    }
+}
+
+class LinkedList {
+    constructor() {
+        this.m_head = null;
+        this.m_tail = null;
+        this.m_current = null;
+        this.m_length = 0;
+        this.m_forward = false;
+    }
+    size() {
+        return this.m_length;
+    }
+    empty() {
+        return this.m_length === 0;
+    }
+    back() {
+        if (this.m_length === 0) {
+            return;
+        }
+        else {
+            return this.m_tail.m_data;
+        }
+    }
+    front() {
+        if (this.m_length === 0) {
+            return;
+        }
+        else {
+            return this.m_head.m_data;
+        }
+    }
+    push_back(data) {
+        let item = new LinkedListItem(data, this.m_tail, null);
+        if (this.m_length > 0) {
+            this.m_tail.m_next = item;
+            this.m_tail = item;
+        }
+        else {
+            this.m_head = item;
+            this.m_tail = item;
+        }
+        ++this.m_length;
+    }
+    pop_back() {
+        if (this.m_length <= 0) {
+            assert(this.m_head === null);
+            assert(this.m_tail === null);
+            return;
+        }
+        assert(this.m_tail);
+        let item = this.m_tail;
+        --this.m_length;
+        if (this.m_length > 0) {
+            this.m_tail = item.m_pre;
+            this.m_tail.m_next = null;
+        } else {
+            this.m_head = null;
+            this.m_tail = null;
+        }
+        if (this.m_current === item) {
+            this.__correct_current();
+        }
+        return item.m_data;
+    }
+    push_front(data) {
+        let item = new LinkedListItem(data, null, this.m_head);
+        if (this.m_length > 0) {
+            this.m_head.m_pre = item;
+            this.m_head = item;
+        }
+        else {
+            this.m_tail = item;
+            this.m_head = item;
+        }
+        ++this.m_length;
+    }
+    pop_front() {
+        if (this.m_length <= 0) {
+            assert(this.m_head === null);
+            assert(this.m_tail === null);
+            return;
+        }
+        assert(this.m_head);
+        let item = this.m_head;
+        --this.m_length;
+        if (this.m_length > 0) {
+            this.m_head = item.m_next;
+            this.m_head.m_pre = null;
+        } else {
+            this.m_head = null;
+            this.m_tail = null;
+        }
+        if (this.m_current === item) {
+            this.__correct_current();
+        }
+        return item.m_data;
+    }
+    current() {
+        if (this.m_current) {
+            return this.m_current.m_data;
+        }
+        else {
+            return;
+        }
+    }
+    __correct_current() {
+        if (this.m_current) {
+            let item = this.m_current;
+            if (this.m_forward) {
+                this.m_current = item.m_pre;
+            }
+            else {
+                this.m_current = item.m_next;
+            }
+        }
+    }
+    erase() {
+        if (!this.m_current) {
+            return;
+        }
+        if (this.m_current === this.m_head) {
+            this.pop_front();
+        }
+        else if (this.m_current === this.m_tail) {
+            this.pop_back();
+        }
+        else {
+            --this.m_length;
+            let item = this.m_current;
+            this.__correct_current();
+            item.m_pre.m_next = item.m_next;
+            item.m_next.m_pre = item.m_pre;
+        }
+        return true;
+    }
+    reset() {
+        this.m_current = null;
+    }
+    next() {
+        this.m_forward = true;
+        if (this.m_current) {
+            this.m_current = this.m_current.m_next;
+        }
+        else {
+            this.m_current = this.m_head;
+        }
+        if (this.m_current) {
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
+    prev() {
+        this.m_forward = false;
+        if (this.m_current) {
+            this.m_current = this.m_current.m_pre;
+        }
+        else {
+            this.m_current = this.m_tail;
+        }
+        if (this.m_current) {
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
+}
+
+class BLogConsoleTarget {
+    constructor() {
+        this.m_clFuncs = {
+            "trace": console.trace,
+            "debug": console.debug,
+            "info": console.info,
+            "warn": console.warn,
+            "error": console.error,
+            "fatal": console.error,
+        };
+    }
+    output(logStringItem, options) {
+        let func = this.m_clFuncs[options.level];
+        if (func) {
+            func(logStringItem);
+        } else {
+            console.log(logStringItem);
+        }
+    }
+}
+var BLogGetDefaultConsoleTarget = function() {
+    let instance;
+    return function() {
+        if (!instance) {
+            instance = new BLogConsoleTarget();
+        }
+        return instance;
+    };
+}();
+const LogTargetMode = {
+    'ASYNC' : 0,
+    'SYNC' : 1,
+};
+const LogMemoryCacheStatus = {
+    'READY': 0,
+    'PENDING': 1,
+};
+
+class LogMemoryCache {
+    constructor(options, target) {
+        this.m_maxSize = -1;
+        this.m_maxCount = 1024 * 10;
+        if (options.maxSize) {
+            this.m_maxSize = options.maxSize;
+        }
+        if (options.maxCount) {
+            this.m_maxCount = options.maxCount;
+        }
+        this.m_retryInterval = 1000;
+        this.m_retryMaxCount = 5;
+        this.m_target = target;
+        assert(this.m_target);
+        this.m_logs = new LinkedList();
+        this.m_size = 0;
+    }
+    chain(nextTarget, mode) {
+        this.m_target = nextTarget;
+        this.m_mode = mode;
+        if (!nextTarget) {
+            this.m_mode = "copy";
+        }
+    }
+    _onItemCompelte(logItem, ret) {
+        const cb = logItem.c;
+        if (cb) {
+            cb(ret, logItem.l, logItem.o);
+        }
+    }
+    _continue() {
+        this._checkLimit();
+        while (!this.m_logs.empty()) {
+            const logItem = this.m_logs.pop_front();
+            if (this._outputItem(logItem)) {
+            } else {
+                break;
+            }
+        }
+    }
+    _cacheLog(logString, options, onComplete, back = true) {
+        const item = {
+            "l": logString,
+            "o": options,
+            "c": onComplete,
+            "r": 0,
+        };
+        this._cacheItem(item, back);
+    }
+    _cacheItem(logItem, back = true) {
+        this.m_size += logItem.l.length;
+        if (back) {
+            this.m_logs.push_back(logItem);
+        } else {
+            this.m_logs.push_front(logItem);
+        }
+    }
+    _checkLimit() {
+        if (this.m_maxCount > 0) {
+            while (this.m_logs.size() > this.m_maxCount) {
+                const oldItem = this.m_logs.pop_front();
+                this._onItemCompelte(oldItem);
+            }
+        }
+        if (this.m_maxSize > 0) {
+            while (this.m_size > this.m_maxSize) {
+                const oldItem = this.m_logs.pop_front();
+                if (oldItem) {
+                    this.m_size -= oldItem.l.length;
+                    assert(this.m_size >= 0);
+                    this._onItemCompelte(oldItem);
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+class AsyncLogMemoryCache extends LogMemoryCache {
+    constructor(options, target) {
+        super(options, target);
+        this.m_status = LogMemoryCacheStatus.READY;
+    }
+    output(logString, options, onComplete) {
+        const item = {
+            "l": logString,
+            "o": options,
+            "c": onComplete,
+            "r": 0,
+        };
+        let ret = false;
+        if (this.m_status === LogMemoryCacheStatus.READY &&
+            this.m_logs.empty()) {
+            ret = this._outputItem(item);
+        } else {
+            this._cacheItem(item, true);
+        }
+        return ret;
+    }
+    flush() {
+        while (!this.m_logs.empty()) {
+            const logItem = this.m_logs.pop_front();
+            if (this._outputItem(logItem)) {
+            } else {
+                break;
+            }
+        }
+    }
+    _outputItem(logItem) {
+        assert(this.m_status === LogMemoryCacheStatus.READY);
+        this.m_status = LogMemoryCacheStatus.PENDING;
+        let inCall = true;
+        const outputRet = this.m_target.output(logItem.l, logItem.o, (ret) => {
+            assert(this.m_status === LogMemoryCacheStatus.PENDING);
+            this.m_status = LogMemoryCacheStatus.READY;
+            if (ret === 0) {
+                if (logItem.c) {
+                    logItem.c(ret, logString, logOption);
+                }
+                if (inCall) {
+                    setImmediate(() => {
+                        this._continue();
+                    });
+                } else {
+                    this._continue();
+                }
+            } else {
+                ++logItem.r;
+                if (logItem.r > this.m_retryMaxCount) {
+                    if (logItem.c) {
+                        logItem.c(KRESULT.FAILED, logString, logOption);
+                    }
+                    if (inCall) {
+                        setImmediate(() => {
+                            this._continue();
+                        });
+                    } else {
+                        this._continue();
+                    }
+                } else {
+                    this._cacheItem(logItem, false);
+                    setTimeout(() => {
+                        this._continue();
+                    }, this.m_retryInterval);
+                }
+            }
+        });
+        inCall = false;
+        if (outputRet) {
+            this.m_status = LogMemoryCacheStatus.READY;
+        }
+        return outputRet;
+    }
+}
+
+class SyncLogMemoryCache extends LogMemoryCache {
+    constructor(options, target) {
+        super(options, target);
+        this.m_timer = null;
+    }
+    output(logString, options, onComplete) {
+        const item = {
+            "l": logString,
+            "o": options,
+            "c": onComplete,
+            "r": 0,
+        };
+        let ret = false;
+        if (this.m_logs.empty()) {
+            ret = this._outputItem(item);
+        } else {
+            this._cacheLog(item, true);
+        }
+        return ret;
+    }
+    flush() {
+        this._continue();
+    }
+    _outputItem(logItem) {
+        let ret = this.m_target.output(logItem.l, logItem.o);
+        if (ret) {
+            if (logItem.c) {
+                logItem.c(ret, logItem.l, logItem.o);
+            }
+        } else {
+            this._cacheItem(logItem, false);
+            if (this.m_timer == null) {
+                this.m_timer = setTimeout(() => {
+                    this.m_timer = null;
+                    this._continue();
+                } , this.m_retryInterval);
+            }
+        }
+        return ret;
+    }
+}
+
+class LogFileTarget {
+    constructor(options) {
+        assert(options.folder);
+        assert(options.filename);
+        this.m_folder = options.folder;
+        this.m_filename = options.filename;
+        this.m_filePath = null;
+        this.m_fileMaxSize = 1024 * 1024 * 16;
+        if (options.filemaxsize) {
+            this.m_fileMaxSize = options.filemaxsize;
+        }
+        this.m_fileMaxCount = 10;
+        if (options.filemaxcount) {
+            this.m_fileMaxCount = options.filemaxcount;
+        }
+        this.m_fd = null;
+        this.m_curFileIndex = 0;
+        this.m_writtenSize = 0;
+        this.m_retryInterval = 1000 * 5;
+        this.m_status = 1;
+        this._nextFilePath((index, filePath) => {
+            this.m_curFileIndex = index;
+            this.m_filePath = filePath;
+            this._open();
+        });
+    }
+    _nextFilePath(OnComplete) {
+        let tm = null;
+        let index = 0;
+        let curIndex = this.m_curFileIndex;
+        for (let i = 0; i < this.m_fileMaxCount; ++i) {
+            const fullPath = this.m_folder + "/" + this.m_filename + "." + curIndex + ".log";
+            if (!fs.existsSync(fullPath)) {
+                index = curIndex;
+                break;
+            }
+            const stat = fs.lstatSync(fullPath);
+            if (stat.isFile()) {
+                if (!tm) {
+                    console.log("init index", curIndex, stat.mtime);
+                    tm = stat.mtime;
+                    index = curIndex;
+                } else if (stat.mtime < tm) {
+                    tm = stat.mtime;
+                    console.log("update index", index, curIndex);
+                    index = curIndex;
+                }
+            } else {
+            }
+            curIndex++;
+            curIndex = curIndex % this.m_fileMaxCount;
+        }
+        const filePath = this.m_folder + "/" + this.m_filename + "." + index + ".log";
+        console.log(filePath);
+        OnComplete(index, filePath);
+    }
+}
+
+class AsyncLogFileTarget extends LogFileTarget {
+    constructor(options) {
+        super(options);
+        this.m_fs = null;
+        this.m_ready = false;
+    }
+    output(logString, option, onComplete) {
+        if (this.m_fs) {
+            if (this.m_ready) {
+                this.m_writtenSize += logString.length;
+                if (this.m_writtenSize >= this.m_fileMaxSize) {
+                    console.log("size extend!", this.m_writtenSize, this.m_fileMaxSize);
+                    this._close();
+                    this._nextFilePath((index, filePath) => {
+                        this.m_curFileIndex = index;
+                        this.m_filePath = filePath;
+                        this._open();
+                    });
+                    onComplete(KRESULT.FAILED, logString, option);
+                    return false;
+                }
+                this.m_ready = this.m_fs.write(logString + option.lbr, 'utf8', (err) => {
+                    if (err) {
+                        onComplete(KRESULT.FAILED, logString, option);
+                    } else {
+                        onComplete(0, logString, option);
+                    }
+                });
+            } else {
+                onComplete(KRESULT.FAILED, logString, option);
+            }
+        } else {
+            onComplete(KRESULT.FAILED, logString, option);
+        }
+        return false;
+    }
+    flush() {
+    }
+    _close() {
+        if (this.m_fd) {
+            let fd = this.m_fd;
+            this.m_fd = null;
+            this.m_fs = null;
+            this.m_ready = false;
+            this.m_writtenSize = 0;
+            fs.close(fd, () => {
+                console.log("close fd success!", fd);
+            });
+        }
+    }
+    _open() {
+        fs.open(this.m_filePath, 'w+', (err, fd) => {
+            if (err) {
+                console.error("open log file failed: file={0}, err={1}", this.m_path, err);
+                this._onOpenFailed(err);
+            } else {
+                console.info("open log file success: file={0}", this.m_filePath);
+                this._onOpenSuccess(fd);
+            }
+        });
+    }
+    _onOpenSuccess(fd) {
+        assert(!this.m_fs);
+        assert(fd);
+        const opt = {
+            'flags': 'w',
+            'fd': fd,
+            'mode': 0o666,
+            'autoClose': true,
+        };
+        this.m_fd = fd;
+        this.m_fs = fs.createWriteStream(null, opt);
+        this.m_ready = true;
+        this.m_fs.on('drain', () => {
+            this.m_ready = true;
+        });
+    }
+    _onOpenFailed(err) {
+        if (!fs.existsSync(this.m_folder)) {
+            console.log("will create dir", this.m_folder);
+            fs.ensureDir(this.m_folder, (err) => {
+                if (err) {
+                    console.error("create dir failed:", this.m_folder);
+                    this._stopOpen(err);
+                } else {
+                    console.info("create dir success:", this.m_folder);
+                    this._open();
+                }
+            });
+        } else {
+            this._stopOpen(err);
+        }
+    }
+    _stopOpen(error) {
+        setTimeout(() => {
+            this._open();
+        }, this.m_retryInterval);
+    }
+}
+
+class SyncLogFileTarget extends LogFileTarget {
+    constructor(options) {
+        super(options);
+        this.m_pos = 0;
+    }
+    output(logString, option) {
+        if (this.m_fd == null) {
+            return false;
+        }
+        this.m_writtenSize += logString.length;
+        if (this.m_writtenSize >= this.m_fileMaxSize) {
+            console.log("size extend:", this.m_writtenSize, this.m_fileMaxSize);
+            this._close();
+            let ret = false;
+            this._nextFilePath((index, filePath) => {
+                this.m_curFileIndex = index;
+                this.m_filePath = filePath;
+                ret = this._open();
+            });
+            if (!ret) {
+                return false;
+            }
+        }
+        let ret = true;
+        try {
+            this.m_pos += fs.writeSync(this.m_fd, logString + option.lbr, this.m_pos, 'utf8');
+        } catch (error) {
+            console.log('write log failed:', error, this.m_filePath, logString);
+            ret = false;
+        }
+        return ret;
+    }
+    _open() {
+        assert(this.m_fd == null);
+        try {
+            this.m_fd = fs.openSync(this.m_filePath, 'w+');
+        } catch (error) {
+            this.m_fd = null;
+            console.error('open file failed:', this.m_filePath, error);
+        }
+        if (this.m_fd) {
+            console.error("open log file success: file={0}", this.m_filePath);
+            this.m_pos = 0;
+            return true;
+        } else {
+            console.error("open log file failed: file={0}", this.m_filePath);
+            this._onOpenFailed();
+            return false;
+        }
+    }
+    _close() {
+        if (this.m_fd) {
+            let fd = this.m_fd;
+            this.m_fd = null;
+            this.m_writtenSize = 0;
+            try {
+                fs.closeSync(fd);
+                console.log("close fd success!", fd);
+            } catch (error) {
+                console.error("close fd failed!", fd, error);
+            }
+        }
+    }
+    _onOpenFailed(err) {
+        if (!fs.existsSync(this.m_folder)) {
+            console.log("will create dir", this.m_folder);
+            try {
+                fs.ensureDirSync(this.m_folder);
+            } catch (err) {
+                console.error("create dir exception:", this.m_folder, err);
+            }
+            if (fs.existsSync(this.m_folder)) {
+                console.info("create dir success:", this.m_folder);
+                this._open();
+            } else {
+                console.error("create dir failed:", this.m_folder);
+                this._stopOpen(err);
+            }
+        } else {
+            this._stopOpen(err);
+        }
+    }
+    _stopOpen(error) {
+        this.m_status = -1;
+        this.m_lastOpenTime = new Date();
+        setTimeout(() => {
+            this._open();
+        }, this.m_retryInterval);
+    }
+}
+var LogTCPTargetPackageHeader = {
+    "magic": 1234,
+    "type": 0,
+    "bodyLen": 0.
+};
+const g_logTCPTargetPackageHeaderSize = 12;
+
+class LogTCPTargetPackageEncoder {
+    constructor() {
+        this.m_buffer = Buffer.allocUnsafe(1024 * 4);
+        this.m_dataLength = 0;
+    }
+    Encode(type, logString) {
+        const bodyLength = Buffer.byteLength(logString);
+        const fullLength = g_logTCPTargetPackageHeaderSize + bodyLength;
+        if (fullLength > this.m_buffer.length) {
+            this._Grow(fullLength);
+        }
+        let buffer = Buffer.allocUnsafe(g_logTCPTargetPackageHeaderSize + bodyLength);
+        buffer.writeInt32LE(0, 0);
+        buffer.writeInt32LE(type, 4);
+        buffer.writeInt32LE(bodyLength, 8);
+        buffer.write(logString, 12, bodyLength, "utf8");
+        this.m_dataLength = fullLength;
+    }
+    GetBuffer() {
+        return this.m_buffer;
+    }
+    GetDataLength() {
+        return this.m_dataLength;
+    }
+    _Grow(fullLength) {
+        const newLength = this.m_buffer.length * 2;
+        this.m_buffer = Buffer.allocUnsafe(newLength);
+    }
+    Decode() {
+    }
+}
+
+class LogTCPTarget {
+    constructor(options) {
+        assert(options);
+        this.m_host = options.host;
+        this.m_port = options.port;
+        this.m_initString = options.init;
+        if (this.m_initString) {
+            assert(typeof this.m_initString === "string");
+        }
+        this.m_retryInterval = 1000 * 5;
+        this.m_connected = false;
+        this.m_pending = false;
+        this.m_encoder = new LogTCPTargetPackageEncoder();
+        this._Open();
+    }
+    Output(logString, option, OnComplete) {
+        if (this.m_connected && !this.m_pending) {
+            this.m_encoder.Encode(0, logString);
+            this.m_pending = true;
+            let This = this;
+            this.m_sock.write(this.m_encoder.GetBuffer(), this.m_encoder.GetDataLength(), function() {
+                assert(This.m_pending);
+                This.m_pending = false;
+                OnComplete(0, logString, option);
+            });
+        } else {
+            OnComplete(KRESULT.FAILED, logString, option);
+        }
+    }
+    _Open() {
+        assert(!this.m_sock);
+        assert(!this.m_connected);
+        const options = {
+            "readable": false,
+            "writable": true,
+        };
+        let This = this;
+        this.m_sock = new net.Socket(options);
+        this.m_sock.on("connect", function() {
+            assert(!This.m_connected);
+            This.m_connected = true;
+            This.m_pending = false;
+            This._SendInitPackage();
+        });
+        this.m_sock.on("close", function(hadError) {
+            This.m_connected = false;
+            This.m_pending = false;
+            This._RetryConnect();
+        });
+    }
+    _Connect() {
+        assert(this.m_sock);
+        assert(!this.m_connected);
+        const options = {
+            "host": this.m_host,
+            "port": this.m_port,
+        };
+        this.m_sock.connect(options);
+    }
+    _SendInitPackage() {
+        if (this.m_initString) {
+            assert(!this.m_pending);
+            this.m_encoder.Encode(1, this.m_initString);
+            this.m_pending = true;
+            let This = this;
+            this.m_sock.write(this.m_encoder.GetBuffer(), this.m_encoder.GetDataLength(), function() {
+                assert(This.m_pending);
+                This.m_pending = false;
+            });
+        }
+    }
+    _RetryConnect() {
+        let This = this;
+        setTimeout(function() {
+            This._Connect();
+        }, this.m_retryInterval);
+    }
+}
+"use strict";
+let BlogUploader = (function() {
+    const LOGS_SERVER = 'https://dev.tinyappcloud.com/services/logs';
+    class Parser {
+        constructor(appid=null) {
+            this.m_appid = appid;
+        }
+        parseDatetime(str) {
+            let match = str.match(/(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{1,2})\.(\d{0,3})/);
+            if (match) {
+                let [_, year, month, day, hour, minutes, seconds, milliseconds] = match;
+                let padding_month = '0' + (parseInt(month) - 1);
+                month = padding_month.slice(-2, padding_month.length);
+                return new Date(year, month, day, hour, minutes, seconds, milliseconds || 0).getTime();
+            } else {
+                return null;
+            }
+        }
+        logToObj(log) {
+            const LOG_LEVEL = {
+                "all": 0,
+                "trace": 1,
+                "debug": 2,
+                "info": 3,
+                "warn": 4,
+                "error": 5,
+                "fatal": 6,
+                "off": 7,
+            };
+            let match = log.match(/\[([^\[\]]*)\],\[([^\[\]]*)\],\[([^\[\]]*)\]/);
+            if ((!match) || match.length !== 4) {
+                return null;
+            } else {
+                let [_, level, datetime, traceInfo] = match;
+                datetime = this.parseDatetime(datetime);
+                if (!datetime) return null;
+                level = LOG_LEVEL[level];
+                if (level === undefined) return null;
+                let ccid, runtimeID, moduleID, appid;
+                if (traceInfo !== '-')
+                    [ccid, runtimeID, appid] = traceInfo.split(',');
+                if (this.m_appid || appid) {
+                    return {
+                        appid: this.m_appid || appid,
+                        level,
+                        logAt: datetime,
+                        content: log,
+                        runtimeID: runtimeID || null,
+                        ccid: ccid || null,
+                        moduleID: null
+                    };
+                } else {
+                    return null;
+                }
+            }
+        }
+    }
+    class Uploader {
+        constructor(appid=null) {
+            this.m_appid = appid;
+            this.m_LogsServer = LOGS_SERVER;
+            this.parser = new Parser(appid);
+        }
+        upload(logs, onComplete) {
+            let t = new Date().getTime();
+            let data = [];
+            let parser = this.parser;
+            logs.forEach(log => {
+                let d = parser.logToObj(log);
+                if (d) {
+                    data.push(d);
+                } else {
+                    console.warn('cannot parse log: ', log);
+                }
+            });
+            BaseLib.postJSONEx(this.m_LogsServer, data, (resp, status, errCode) => {
+                let json_data;
+                if (errCode !== ErrorCode.RESULT_OK) {
+                    onComplete(errCode);
+                    return;
+                } else if (status !== 200) {
+                    onComplete(resp || "not 200 http ok");
+                    return;
+                } else {
+                    try {
+                        json_data = JSON.parse(resp);
+                        if (typeof(json_data) !== 'object') {
+                            onComplete(ErrorCode.RESULT_INVALID_TYPE, resp);
+                            return;
+                        }
+                    } catch (e) {
+                        onComplete(e, resp);
+                        return;
+                    }
+                }
+                if (json_data.ret !== ErrorCode.RESULT_OK) {
+                    onComplete(json_data.ret + ', ' + json_data.msg, json_data);
+                } else {
+                    onComplete(null, json_data);
+                }
+            });
+        }
+    }
+    class Watcher {
+        constructor(appid, watched_path, logfile_pattern=null) {
+            this.watched_path = watched_path;
+            this.read_offsets = {};
+            this.offset_files = {};
+            this.upload_locks = {};
+            this.upload_retries = {};
+            this.linebreak = blog.getOptions().m_formatter.m_lineBreak;
+            this.BUFFER_SIZE = 1024*1024;
+            this.LOG_FILE_NAME_PATTERN = logfile_pattern || new RegExp(`.*\\.log`);
+            this.uploader = new Uploader(appid);
+            this.setProcessCleanup();
+            this.resumeUpload();
+        }
+        setProcessCleanup() {
+            let cleanup = function(err) {
+                Object.keys(this.read_offsets).forEach(log_filename => {
+                    this.saveFileOffset(log_filename, this.read_offsets[log_filename]);
+                });
+                if (err) throw err;
+            };
+            process.on('exit', cleanup.bind(this));
+            process.on('SIGINT', cleanup.bind(this));
+            process.on('uncaughtException', cleanup.bind(this));
+        }
+        resumeUpload() {
+            let files = fs.readdirSync(this.watched_path);
+            for (let filename of files) {
+                if (filename.match(this.LOG_FILE_NAME_PATTERN)) {
+                    let bytes = fs.statSync(path.join(this.watched_path, filename)).size;
+                    let offset = this.getReadOffset(filename);
+                    if (bytes !== offset) {
+                        this._uploadLogsAfterOffset(filename, offset);
+                    }
+                }
+            }
+        }
+        startWatch() {
+            let pattern = this.LOG_FILE_NAME_PATTERN;
+            fs.watch(this.watched_path, (event, filename) => {
+                if (filename.match(pattern)) {
+                    let offset = this.getReadOffset(filename);
+                    this._uploadLogsAfterOffset(filename, offset, err => {
+                        if (err) {
+                            console.error(err);
+                            let will_retry = this.upload_retries[filename] || this.upload_locks[filename];
+                            if (!will_retry) {
+                                this._setUploadRetry(filename);
+                            }
+                        }
+                    });
+                }
+            });
+        }
+        _uploadLogsAfterOffset(filename, offset, cb) {
+            if (this.upload_locks[filename]) {
+                console.warn(filename + ' upload locked');
+                if (cb) cb(null);
+            } else {
+                this.upload_locks[filename] = true;
+                this.readStreamThenUpload(filename, offset, (err, uploaded_bytes) => {
+                    if (err) {
+                        this.upload_locks[filename] = false;
+                        this.setFileOffset(filename, uploaded_bytes);
+                        console.error(err);
+                        if (cb) cb(err);
+                    } else {
+                        this.setFileOffset(filename, uploaded_bytes);
+                        this.upload_locks[filename] = false;
+                        if (cb) cb(null);
+                    }
+                });
+            }
+        }
+        _setUploadRetry(filename, retry = 0) {
+            if (retry > 3) {
+                let timer = this.upload_retries[filename];
+                if (timer) clearTimeout(timer);
+                console.error('exceed max number of retries when upload logs in: ' + filename);
+            } else {
+                this.upload_retries[filename] = setTimeout(() => {
+                    let offset = this.getReadOffset(filename);
+                    this._uploadLogsAfterOffset(filename, offset, err => {
+                        if (err) {
+                            this._setUploadRetry(filename, retry + 1);
+                        } else {
+                            return;
+                        }
+                    });
+                }, Math.pow(2, retry) * 1000);
+            }
+        }
+        _getOffsetFile(log_filename) {
+            let filepath = this.offset_files[log_filename];
+            if (filepath) {
+                return filepath;
+            } else {
+                let offset_file = path.join(this.watched_path, path.basename(log_filename, '.log') + '.uploaded');
+                this.offset_files[log_filename] = offset_file;
+                return offset_file;
+            }
+        }
+        getReadOffset(log_filename) {
+            let offset = this.read_offsets[log_filename];
+            if (offset === undefined) {
+                let offset_file = this._getOffsetFile(log_filename);
+                try {
+                    fs.statSync(offset_file);
+                    let offset = fs.readFileSync(offset_file);
+                    return parseInt(offset);
+                } catch (e) {
+                    if (e.code === 'ENOENT') {
+                        this.read_offsets[log_filename] = 0;
+                        return 0;
+                    } else {
+                        throw e;
+                    }
+                }
+            } else {
+                return this.read_offsets[log_filename];
+            }
+        }
+        setFileOffset(log_filename, offset) {
+            this.read_offsets[log_filename] = offset;
+        }
+        saveFileOffset(log_filename, offset) {
+            let offset_file = this._getOffsetFile(log_filename);
+            fs.writeFileSync(offset_file, offset, { flag: 'w' });
+        }
+        readStreamThenUpload(filename, offset, cb) {
+            let file_path = path.join(this.watched_path, filename);
+            var readStream = fs.createReadStream(file_path, { start: offset });
+            readStream.setEncoding('utf8');
+            readStream
+                .on('readable', () => {
+                    this._uploadLines(null, readStream, offset, cb);
+                })
+                .on('close', () => {
+                });
+        }
+        _uploadLines(err, read_stream, uploaded_bytes, cb) {
+            let chunk = read_stream.read(this.BUFFER_SIZE);
+            if (chunk) {
+                let bytes = uploaded_bytes + Buffer.byteLength(chunk, 'utf8');
+                let lines = chunk.split(this.linebreak);
+                let last = lines.pop();
+                if (last !== "" && typeof(last) === 'string') {
+                    read_stream.unshift(last);
+                    bytes = bytes - Buffer.byteLength(last, 'utf8');
+                }
+                this.uploader.upload(lines, (err, resp) => {
+                    if (err) {
+                        cb(err, bytes);
+                    } else {
+                        this._uploadLines(null, read_stream, bytes, cb);
+                    }
+                });
+            } else {
+                cb(null, uploaded_bytes);
+            }
+        }
+        static spawn(blog, appid=null) {
+            let fileTarget = blog.getOptions().m_targets[1].m_target;
+            let folder = fileTarget.m_folder;
+            let filename = fileTarget.m_filename;
+            assert(filename, filename);
+            let basename = filename.split('[')[0];
+            let regexp_log_file = new RegExp(`${basename}(\\[\\d*\\])?\\.\\d*\\.log`);
+            let uploader;
+            if (appid)
+                assert(appid.length === 10);
+            uploader = new BlogUploader(appid, folder, regexp_log_file);
+            uploader.startWatch();
+        }
+    }
+    return Watcher;
+})();
+module.exports = BlogUploader;
+const BLogLevel = {
+    "ALL": 0,
+    "TRACE": 1,
+    "DEBUG": 2,
+    "INFO": 3,
+    "WARN": 4,
+    "ERROR": 5,
+    "CHECK": 6,
+    "FATAL": 7,
+    "OFF": 8,
+    "strings" : ['all', 'trace', 'debug', 'info', 'warn', 'error', 'check', 'fatal', 'off'],
+    "toString" : (level) => {
+        return BLogLevel.strings[level];
+    }
+};
+
+class BLogNormalFormatter {
+    constructor() {
+        this.m_convertFuncs = {
+            "object": (arg) => {
+                return JSON.stringify(arg);
+            },
+            'undefined': () => {
+                return 'undefined';
+            },
+            'function': () => {
+                return "";
+            },
+            'string': (arg) => {
+                return arg;
+            },
+        };
+        if (BLogEnv.platform() === "win32") {
+            this.m_lineBreak = "\r\n";
+        } else if (BLogEnv.platform() === "darwin") {
+            this.m_lineBreak = "\r";
+        } else if (BLogEnv.platform() === "wx") {
+            this.m_lineBreak = "\n";
+        } else {
+            this.m_lineBreak = "\n";
+        }
+    }
+    getLineBreak() {
+        return this.m_lineBreak;
+    }
+    format(values, options) {
+        let strValue = "";
+        const separator = options.getSeparator();
+        let stringHeaders = options.getStringHeaders();
+        if (stringHeaders) {
+            for (let item in stringHeaders) {
+                strValue += stringHeaders[item];
+                strValue += separator;
+            }
+        }
+        strValue += '[' + values.level + ']' + separator;
+        strValue += '[' + BLogNormalFormatter.formatTime(values.time) + ']' + separator;
+        strValue += '[' + values.traceInfo + ']' + separator;
+        strValue += this.formatArgs(values.args);
+        if (values.pos) {
+            strValue += separator + values.pos.file + ':' + values.pos.line;
+        }
+        return strValue;
+    }
+    convertArg(arg) {
+        const type = typeof arg;
+        let result;
+        try {
+            let convertFunc = this.m_convertFuncs[type];
+            if (convertFunc) {
+                return convertFunc(arg);
+            } else {
+                return arg.toString();
+            }
+        } catch (err) {
+            result = "[!!!exception args!!!]";
+        }
+        return result;
+    }
+    formatArgs(args) {
+        if (args.length < 1) {
+            return "";
+        }
+        let maxIndex = 0;
+        let value = "";
+        if (typeof args[0] === 'string') {
+            value = args[0].replace(/{(\d+)}/g,
+                (match, index) => {
+                    const numIndex = parseInt(index) + 1;
+                    if (numIndex > maxIndex) {
+                        maxIndex = numIndex;
+                    }
+                    return this.convertArg(args[numIndex]);
+                });
+        } else {
+            value = this.convertArg(args[0]);
+        }
+        for (let index = maxIndex + 1; index < args.length; ++index) {
+            value += ' ' + this.convertArg(args[index]);
+        }
+        return value;
+    }
+    static fixNumber(num) {
+        let ret;
+        if (num >= 0 && num <= 9) {
+            ret = '0' + num;
+        } else {
+            ret = num;
+        }
+        return ret;
+    }
+    static formatTime(date) {
+        const dateString = date.getFullYear() + '-' + BLogNormalFormatter.fixNumber(date.getMonth() + 1) +
+            '-' + BLogNormalFormatter.fixNumber(date.getDate()) +
+            ' ' + BLogNormalFormatter.fixNumber(date.getHours()) +
+            ':' + BLogNormalFormatter.fixNumber(date.getMinutes()) +
+            ':' + BLogNormalFormatter.fixNumber(date.getSeconds()) +
+            '.' + date.getMilliseconds();
+        return dateString;
+    }
+}
+
+class BLogOptions {
+    constructor(options) {
+        this.m_switch = true;
+        this.m_level = BLogLevel.ALL;
+        this.m_logger = "global";
+        this.m_pos = true;
+        this.m_fullPath = false;
+        this.m_headers = {};
+        this.m_stringHeaders = {};
+        this.m_separator = ',';
+        this.m_targets = [];
+        if (options) {
+            for (let item in options) {
+                const type = typeof options[item];
+                if (type !== "object") {
+                    this[item] = options[item];
+                }
+            }
+            this.m_targets = [];
+            for (let i = 0; i < options.m_targets.length; ++i) {
+                this.m_targets.push(options.m_targets[i]);
+            }
+            for (let item in options.m_headers) {
+                this.m_headers[item] = options.m_headers[item];
+            }
+            for (let item in options.m_stringHeaders) {
+                this.m_stringHeaders[item] = options.m_stringHeaders[item];
+            }
+        }
+        if (!this.m_formatter) {
+            this.m_formatter = new BLogNormalFormatter();
+        }
+        if (this.m_targets.length <= 0) {
+            this.enableConsoleTarget(true);
+        }
+        BLogEnv.filterOptions(this);
+    }
+    setSwitch(on) {
+        if (on) {
+            this.m_switch = true;
+        } else {
+            this.m_switch = false;
+        }
+    }
+    getLevel() {
+        return this.m_level;
+    }
+    setLevel(level) {
+        if (typeof(level) === "string") {
+            this.m_level = BLogLevel[level.toUpperCase()];
+        } else if (typeof(level) === "number") {
+            this.m_level = level;
+        } else {
+            assert(false);
+        }
+    }
+    isLevelOn(level) {
+        if (level >= this.m_level) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    isOn(level) {
+        if (!this.m_switch) {
+            return false;
+        }
+        if (!this.isLevelOn(level)) {
+            return false;
+        }
+        return true;
+    }
+    clone() {
+        return new BLogOptions(this);
+    }
+    setLoggerName(name) {
+        this.m_logger = name;
+    }
+    getLoggerName() {
+        return this.m_logger;
+    }
+    setFormatter(formatter) {
+        this.m_formatter = formatter;
+    }
+    getFormatter() {
+        return this.m_formatter;
+    }
+    setSeparator(separator) {
+        this.m_separator = separator;
+    }
+    getSeparator() {
+        return this.m_separator;
+    }
+    enablePos(enable) {
+        this.m_pos = enable;
+    }
+    getPos() {
+        return this.m_pos;
+    }
+    enableFullPath(enable) {
+        this.m_fullPath = enable;
+    }
+    getFullPath() {
+        return this.m_fullPath;
+    }
+    addHeader(name, value) {
+        this.m_headers[name] = value;
+        this.m_stringHeaders[name] = this.genStringHeader(name);
+    }
+    removeHeader(name) {
+        delete this.m_headers[name];
+        delete this.m_stringHeaders[name];
+    }
+    genStringHeader(name) {
+        let headerString = '[' + name + '=' + this.m_headers[name] + ']';
+        return headerString;
+    }
+    getHeaders() {
+        return this.m_headers;
+    }
+    getStringHeaders() {
+        return this.m_stringHeaders;
+    }
+    getTargets() {
+        return this.m_targets;
+    }
+    addTarget(target) {
+        this.m_targets.push(target);
+    }
+    enableConsoleTarget(enable) {
+        const defaultConsoleTarget = BLogGetDefaultConsoleTarget();
+        if (enable) {
+            let exists = false;
+            for (let target of this.m_targets) {
+                if (target === defaultConsoleTarget) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                this.m_targets.push(defaultConsoleTarget);
+            }
+            return defaultConsoleTarget;
+        } else {
+            let ret = false;
+            for (let i = 0; i < this.m_targets.length; ++i) {
+                if (this.m_targets[i] === defaultConsoleTarget) {
+                    this.m_targets.slice(i, i + 1);
+                    ret = true;
+                    break;
+                }
+            }
+            return ret;
+        }
+    }
+    addFileTarget(options) {
+        let rootFolder;
+        if (os.platform() === 'win32') {
+            rootFolder = "C:\\blog\\";
+        } else {
+            rootFolder = "/var/blog/";
+        }
+        let fileName = path.basename(require.main.filename, ".js");
+        if (!fileName || fileName.length <= 0) {
+            fileName = "node";
+        }
+        const subFolder = fileName;
+        fileName += "[" + process.pid + "]";
+        const defaultOptions = {
+            "rootFolder": rootFolder,
+            "subFolder": subFolder,
+            "filename": fileName,
+            "filemaxsize": 1024 * 1024 * 16,
+            "filemaxcount": 20,
+        };
+        if (options) {
+            for (let item in options) {
+                defaultOptions[item] = options[item];
+            }
+            if (defaultOptions.rootFolder[defaultOptions.rootFolder.length - 1] != '/' &&
+                defaultOptions.rootFolder[defaultOptions.rootFolder.length - 1] != '\\') {
+                defaultOptions.rootFolder += '/';
+            }
+        }
+        defaultOptions.folder = defaultOptions.rootFolder + defaultOptions.subFolder;
+        let target;
+        if (options.mode && options.mode === 'sync') {
+            let fileTarget = new SyncLogFileTarget(defaultOptions);
+            target = new SyncLogMemoryCache({}, fileTarget);
+        } else {
+            let fileTarget = new AsyncLogFileTarget(defaultOptions);
+            target = new AsyncLogMemoryCache({}, fileTarget);
+        }
+        this.m_targets.push(target);
+        return target;
+    }
+}
+var BLogGetGlobalOptions = function() {
+    let instance;
+    return function() {
+        if (!instance) {
+            instance = new BLogOptions();
+        }
+        return instance;
+    };
+}();
+
+class BLog {
+    constructor(options) {
+        if (options) {
+            this.m_options = new BLogOptions(options);
+        } else {
+            this.m_options = BLogGetGlobalOptions();
+        }
+    }
+    getOptions() {
+        return this.m_options;
+    }
+    setFunc(func) {
+        this.m_framefunc = func;
+    }
+    log(level, frameIndex, args) {
+        const options = this.m_options;
+        if (!options.isOn(level)) {
+            return;
+        }
+        const values = {};
+        values.traceInfo = "-";
+        const lastArg = args[args.length - 1];
+        if (typeof(lastArg) === "function") {
+            values.traceInfo = lastArg();
+        }
+        values.level = BLogLevel.toString(level);
+        values.time = new Date();
+        values.args = args;
+        values.headers = options.getHeaders();
+        if (this.m_options.getPos()) {
+            values.pos = BLog.getPos(this.log, frameIndex);
+            if (values.pos.file != null) {
+                if (!this.m_options.getFullPath()) {
+                    values.pos.file = path.basename(values.pos.file);
+                }
+            } else {
+                values.pos.file = '[source]';
+            }
+        }
+        const formatter = options.getFormatter();
+        assert(formatter);
+        const stringValue = formatter.format(values, this.m_options);
+        const targets = options.getTargets();
+        const targetOptions = {
+            "level": level,
+            "lbr": formatter.getLineBreak(),
+        };
+        for (let i = 0; i < targets.length; ++i) {
+            let target = targets[i];
+            target.output(stringValue, targetOptions);
+        }
+        return this;
+    }
+    bind(name, option) {
+        for (let i in this.m_option) {
+            if (!option[i]) {
+                option[i] = this.m_option[i];
+            }
+        }
+        const newObj = new BLog(option);
+        function __Log() {
+            return newObj.log(arguments);
+        }
+        newObj.setFunc(__Log);
+        if (name) {
+            module.exports[name] = __Log;
+        }
+        return __Log;
+    }
+    static getStack(func) {
+        const old = Error.prepareStackTrace;
+        Error.prepareStackTrace = (error, stack) => {
+            return stack;
+        };
+        const err = new Error();
+        Error.captureStackTrace(err, func);
+        const stack = err.stack;
+        Error.prepareStackTrace = old;
+        return stack;
+    }
+    static getPos(func, frameIndex) {
+        const stack = BLog.getStack(func);
+        const frame = stack[frameIndex];
+        const pos = {
+            "line": frame.getLineNumber(),
+            "file": frame.getFileName(),
+            "func": frame.getFunctionName(),
+        };
+        return pos;
+    }
+}
+var BLogGetDefaultLog = (function() {
+    let logInstance;
+    return function() {
+        if (!logInstance) {
+            logInstance = new BLog();
+        }
+        return logInstance;
+    };
+})();
+
+class BLogManager {
+    constructor() {
+        this.m_loggers = {};
+    }
+    addLogger(name, obj) {
+        assert(!this.m_loggers[name]);
+        this.m_loggers[name] = obj;
+    }
+    getLogger(name, option) {
+        let blogObj = this.m_loggers[name];
+        if (!blogObj) {
+            console.log("create new logger:", name);
+            blogObj = new BLog(option);
+            this.m_loggers[name] = blogObj;
+        }
+        return blogObj;
+    }
+}
+var BLogGetLogManager = (function() {
+    let managerInstance;
+    return function() {
+        if (!managerInstance) {
+            managerInstance = new BLogManager();
+        }
+        return managerInstance;
+    };
+})();
+function BLogModule(logObj) {
+    const trace = function() {
+        logObj.log(BLogLevel.TRACE, 1, arguments);
+    };
+    const debug = function() {
+        logObj.log(BLogLevel.DEBUG, 1, arguments);
+    };
+    const info = function() {
+        logObj.log(BLogLevel.INFO, 1, arguments);
+    };
+    const warn = function() {
+        logObj.log(BLogLevel.WARN, 1, arguments);
+    };
+    const error = function() {
+        logObj.log(BLogLevel.ERROR, 1, arguments);
+    };
+    const check = function(exp, ...args) {
+        if (!exp) {
+            logObj.log(BLogLevel.CHECK, 1, args);
+        }
+    };
+    const fatal = function() {
+        logObj.log(BLogLevel.FATAL, 1, arguments);
+    };
+    const getLogger = function(name, options) {
+        if (!options) {
+            options = logObj.getOptions();
+        }
+        let newLogObj = BLogGetLogManager().getLogger(name, options);
+        newLogObj.getOptions().setLoggerName(name);
+        return BLogModule(newLogObj);
+    };
+    const clone = function(options) {
+        if (!options) {
+            options = logObj.getOptions();
+        }
+        let newLogObj = new BLog(options);
+        return BLogModule(newLogObj);
+    };
+    const getOptions = function() {
+        return logObj.getOptions();
+    };
+    const setLevel = function(levelName) {
+        return logObj.getOptions().setLevel(levelName);
+    };
+    const addHeader = function(name, value) {
+        return logObj.getOptions().addHeader(name, value);
+    };
+    const removeHeader = function(name, value) {
+        return logObj.getOptions().removeHeader(name, value);
+    };
+    const setSeparator = function(separator) {
+        return logObj.getOptions().setSeparator(separator);
+    };
+    const enablePos = function(enable) {
+        return logObj.getOptions().enablePos(enable);
+    };
+    const enableFullPath = function(enable) {
+        return logObj.getOptions().enableFullPath(enable);
+    };
+    const addFileTarget = function(options) {
+        return logObj.getOptions().addFileTarget(options);
+    };
+    const addTarget = function(target) {
+        return logObj.getOptions().addTarget(target);
+    };
+    const enableConsoleTarget = function(enable) {
+        return logObj.getOptions().enableConsoleTarget(enable);
+    };
+    return {
+        "trace": trace,
+        "debug": debug,
+        "info": info,
+        "warn": warn,
+        "error": error,
+        "check" : check,
+        "fatal": fatal,
+        "log": info,
+        "assert": check,
+        "getLogger": getLogger,
+        "clone": clone,
+        "getOptions": getOptions,
+        "setLevel": setLevel,
+        "addHeader": addHeader,
+        "removeHeader": removeHeader,
+        "setSeparator": setSeparator,
+        "enablePos": enablePos,
+        "enableFullPath": enableFullPath,
+        "addTarget": addTarget,
+        "addFileTarget": addFileTarget,
+        "enableConsoleTarget": enableConsoleTarget,
+    };
+}
+const blog = BLogModule(BLogGetDefaultLog());
+const BLOG_LEVEL_ALL = BLogLevel.ALL;
+const BLOG_LEVEL_TRACE = BLogLevel.TRACE;
+const BLOG_LEVEL_DEBUG = BLogLevel.DEBUG;
+const BLOG_LEVEL_INFO = BLogLevel.INFO;
+const BLOG_LEVEL_WARN = BLogLevel.WARN;
+const BLOG_LEVEL_ERROR = BLogLevel.ERROR;
+const BLOG_LEVEL_CHECK = BLogLevel.CHECK;
+const BLOG_LEVEL_FATAL = BLogLevel.FATAL;
+const BLOG_LEVEL_OFF = BLogLevel.OFF;
+function BX_SetLogLevel(level) {
+    blog.setLevel(level);
+}
+function BX_EnableFileLog(filedir='/var/blog', filename=null, filemaxsize = null, filemaxcount = null, upload_options=null) {
+    const logOptions = {
+        "rootFolder": filedir,
+        "subFolder": ""
+    };
+    if (filename) {
+        logOptions.filename = filename;
+    }
+    if (filemaxsize) {
+        logOptions.filemaxsize = filemaxsize;
+    }
+    if (filemaxcount) {
+        logOptions.filemaxcount = filemaxcount;
+    }
+    blog.addFileTarget(logOptions);
+    blog.enableConsoleTarget(true);
+    BaseLib.mkdirsSync(filedir+'/errors');
+    process.on("uncaughtException", function(err) {
+        console.log(err);
+        console.log(err.stack);
+        let errFileName = "";
+        if (filename) {
+            errFileName = filename+'_crash_'+'['+process.pid+'].log';
+        } else {
+            errFileName = path.basename(require.main.filename, ".js");
+            if (!errFileName || errFileName.length <= 0) {
+                errFileName = "node";
+            }
+            errFileName += '_crash_['+process.pid+'].log';
+        }
+        let content = "crash time: "+TimeFormater.getFormatTime()+"\n";
+        content += err.stack;
+        fs.writeFileSync(filedir+'/errors/'+errFileName, content);
+        process.exit(-1);
+    });
+    if (upload_options && upload_options.autoUpload) {
+        let {appid} = upload_options;
+        BlogUploader.spawn(blog, appid);
+    }
+}
+const BX_LOG = blog.log;
+const BX_DEBUG = blog.debug;
+const BX_TRACE = blog.trace;
+const BX_INFO = blog.info;
+const BX_WARN = blog.warn;
+const BX_CHECK = blog.check;
+const BX_ERROR = blog.error;
+const BX_ASSERT = blog.assert;
 function assert(val) {}
 
 class TimeFormater {
@@ -571,10 +2241,12 @@ class BaseLib {
         return false;
     }
     static isArrayContained(a, b){
-        if(!(a instanceof Array) || !(b instanceof Array))
+        if(!(a instanceof Array) || !(b instanceof Array)){
             return false;
-        if(a.length < b.length)
+        }
+        if(a.length < b.length){
             return false;
+        }
         let blen = b.length;
         for(let i=0;i<blen;i++){
             let alen = a.length;
@@ -590,6 +2262,20 @@ class BaseLib {
             }
         }
         return true;
+    }
+    static mergeArray(a,b) {
+        let result = new Set();
+        if(a) {
+            for(let i=0;0<a.length;++i) {
+                result.add(a[i]);
+            }
+        }
+        if(b) {
+            for(let i=0;0<b.length;++i) {
+                result.add(b[i]);
+            }
+        }
+        return Array.from(result);
     }
     static postJSON(postURL,postBody,onComplete) {
         let strPostBody = JSON.stringify(postBody);
@@ -778,6 +2464,9 @@ class BaseLib {
         }
     }
     static getNodeInfoFromUrl(url) {
+    }
+    static getClientType(){
+        return "pc_client";
     }
 }
 BaseLib.domianConfig = {
@@ -1103,8 +2792,6 @@ class KServerRequest {
         this.m_writeListCB = [];
         this.m_watchList = [];
         this.m_watchListCB = [];
-        this.m_lock = null;
-        this.m_lockResp = null;
     }
     GetSeq() {
         return this.m_seq;
@@ -1118,8 +2805,7 @@ class KServerRequest {
     IsEmpty() {
         return (this.m_readList.length === 0
             && this.m_writeList.length === 0
-            && this.m_watchList.length === 0
-            && this.m_lock == null);
+            && this.m_watchList.length === 0);
     }
     CheckKey(key) {
         return true;
@@ -1256,39 +2942,6 @@ class KServerRequest {
             }
         });
     }
-    lock(path, option, onResponse) {
-        assert(path instanceof Array);
-        assert(option.sid);
-        assert(option.type === 'read' || option.type === 'write');
-        const req = {
-            op: 'lock',
-            sid: option.sid,
-            type: option.type,
-            path: path,
-        };
-        if (option.timeout) {
-            req.timeout = req.timeout;
-        }
-        assert(this.m_lock == null);
-        this.m_lock = req;
-        this.m_lockResp = (ret, resp) => {
-            onResponse(ret, resp);
-        };
-    }
-    unlock(lid, sid, onResponse) {
-        assert(lid);
-        assert(sid);
-        const req = {
-            op: 'unlock',
-            sid: sid,
-            lid: lid,
-        };
-        assert(this.m_lock == null);
-        this.m_lock = req;
-        this.m_lockResp = (ret, resp) => {
-            onResponse(ret, resp);
-        };
-    }
     Encode(tcp) {
         const request = {
             "cmd": "req",
@@ -1308,9 +2961,6 @@ class KServerRequest {
         }
         if (this.m_watchList.length > 0) {
             request.watch = this.m_watchList;
-        }
-        if (this.m_lock) {
-            request.lock = this.m_lock;
         }
         const reqData = JSON.stringify(request);
         if (tcp) {
@@ -1345,7 +2995,7 @@ class KServerRequest {
             } else {
                 ret = KRESULT.FAILED;
             }
-            this._responseList(this.m_readListCB, ret);
+            this.ResponseList(this.m_readListCB, ret);
         }
         if (this.m_writeListCB.length > 0) {
             let ret;
@@ -1360,7 +3010,7 @@ class KServerRequest {
             } else {
                 ret = KRESULT.FAILED;
             }
-            this._responseList(this.m_writeListCB, ret);
+            this.ResponseList(this.m_writeListCB, ret);
         }
         if (this.m_watchListCB.length > 0) {
             let ret;
@@ -1375,26 +3025,10 @@ class KServerRequest {
             } else {
                 ret = KRESULT.FAILED;
             }
-            this._responseList(this.m_watchListCB, ret);
-        }
-        if (this.m_lockResp) {
-            let ret = 0;
-            let resp;
-            if (typeof respObj === 'number') {
-                ret = respObj;
-            } else if (typeof respObj === "object") {
-                if (respObj.hasOwnProperty("ret") && respObj.ret !== 0) {
-                    ret = respObj.ret;
-                } else {
-                    resp = respObj.lock;
-                }
-            } else {
-                ret = KRESULT.FAILED;
-            }
-            this.m_lockResp(ret, resp);
+            this.ResponseList(this.m_watchListCB, ret);
         }
     }
-    _responseList(cbList, respList) {
+    ResponseList(cbList, respList) {
         for (let i = 0; i < cbList.length; ++i) {
             let cb = cbList[i];
             if (!cb) {
@@ -1709,7 +3343,6 @@ class KnowledgeManager {
         this._host = kHost;
         this._appid = appid;
         this._timeout = timeout;
-        this._client = null;
         this._updateToken(apptoken);
     }
     initFromLocalPath(localPath) {
@@ -1948,66 +3581,6 @@ class KnowledgeManager {
 KnowledgeManager.STATE_NEED_SYNC = 0;
 KnowledgeManager.STATE_READY = 1;
 KnowledgeManager.STATE_SYNCING = 2;
-"use strict";
-
-class IDGeneratorClient {
-    static create(appID, generatorID, type, kvArgs, onComplete) {
-        let generator = new CenteredIDGeneratorClient(appID, generatorID, type);
-        generator.initialize(kvArgs, function(error) {
-            if (!error) {
-                onComplete(0, generator);
-            } else {
-                onComplete(error, null);
-            }
-        });
-    }
-    constructor(appID, generatorID, type) {
-        this.m_appID = appID;
-        this.m_generatorID = generatorID;
-        this.m_type = type;
-    }
-    get appID() {
-        return this.m_appID;
-    }
-    get generatorID() {
-        return this.m_generatorID;
-    }
-    get type() {
-        return this.m_type;
-    }
-    initialize(kvArgs, onComplete) {
-        let error = 0;
-        onComplete(error);
-    }
-    generate(onComplete) {
-        let error = 0;
-        let id = '';
-        onComplete(error, id);
-    }
-};
-IDGeneratorClient.TYPE_UUID_64 = 'uuid64';
-IDGeneratorClient.TYPE_SEQ_32 = 'seq32';
-
-class CenteredIDGeneratorClient extends IDGeneratorClient {
-    constructor(appID, generatorID, type) {
-        super(appID, generatorID, type);
-    }
-    initialize(kvArgs, onComplete) {
-        let error = 0;
-        let host = kvArgs.host;
-        this.m_getURL = "http://" + `${host}/${type}/${appID}/${generatorID}`;
-        onComplete(error);
-    }
-    generate(onComplete) {
-        BaseLib.getData(this.m_getURL, req, (resp) => {
-            if (resp) {
-                onComplete(resp.error, resp.id);
-            } else {
-                onComplete(1, null);
-            }
-        });
-    }
-};
 
 class Application {
     constructor() {
@@ -2224,10 +3797,10 @@ class RepositoryPuber{
         let version = packageInfo.version;
         let build = packageInfo.build;
         if (packageID && build) {
-            BX_INFO('#  package:' + packageID + ' version:' + version + ' build:' + packageInfo.build);
+            BX_INFO('package:' + packageID + ' version:' + version + ' build:' + packageInfo.build);
             if(packageInfo.meta) {
                 if(packageInfo.meta.desc) {
-                    BX_INFO('#\t' + packageInfo.meta.desc + '\r\n#');
+                    BX_INFO('\t' + packageInfo.meta.desc + '\r\n');
                 }
             }
         } else {
@@ -2760,59 +4333,51 @@ class Scheduler {
         this.uid = uid;
         this.token = token;
         this.appid = appid;
+        this.runtimeInfo = null;
     }
     _info(pkg, msg) {
         return 'traceid:' + pkg.traceid + '|' + msg;
     }
-    selectMySQLInstance(instanceID, runtime, onComplete) {
+    _getRuntimeInfo(){
         let self = this;
-        let req = {
-            'cmd': 'selectmysql',
-            'uid': self.uid,
-            'token': self.token,
-            'traceid': BaseLib.createGUID(),
-            'appid': self.appid,
-            'instanceid': instanceID
-        };
-        let msg = self._info(req, 'select mysql, start.');
-        BX_INFO(msg);
-        msg = self._info(req, 'select mysql, req:');
-        BX_INFO(msg, req);
-        BaseLib.postJSON(self.host, req, resp => {
-            if(resp == null){
-                let msg = self._info(req, 'select mysql failed, scheduler no response.');
-                BX_ERROR(msg);
-                onComplete(1);
-                return;
-            }
-            if(resp.result !== SRESULT.SUCCESS){
-                let msg = self._info(req, 'select mysql failed, ret:'+resp.result);
-                BX_ERROR(msg);
-                onComplete(1);
-                return;
-            }
-            let msg = self._info(req, 'select mysql success, ret:'+resp.result);
-            BX_INFO(msg, resp.mysql);
-            onComplete(0, resp.mysql);
-        });
+        if(self.runtimeInfo){
+            return self.runtimeInfo;
+        }else{
+            let thisRuntime = getCurrentRuntime();
+            let runtimeInfo = thisRuntime.createRuntimeInfo();
+            self.runtimeInfo = runtimeInfo;
+            return runtimeInfo;
+        }
     }
-    selectRuntime(packageInfo, deveiceInfo, onComplete) {
+    selectRuntime(deviceType, deviceAbility, drivers, storages, onComplete) {
         let self = this;
+        if(deviceType==null){
+            deviceType = '*';
+        }
+        if(deviceAbility==null){
+            deviceAbility = [];
+        }
+        if(drivers==null){
+            drivers = [];
+        }
+        if(storages==null){
+            storages = [];
+        }
+        let runtimeInfo = self._getRuntimeInfo();
         let req = {
             'cmd': 'selectruntime',
             'uid': self.uid,
             'token': self.token,
             'traceid': BaseLib.createGUID(),
             'appid': self.appid,
-            'packageid': packageInfo.packageID,
-            'packageinfo': packageInfo
+            'clientType': runtimeInfo.type,
+            'deviceInfo': {
+                'deviceType':deviceType,
+                'deviceAbility':deviceAbility,
+                'drivers': drivers,
+                'storages': storages
+            },
         };
-        if (deveiceInfo.devicetype) {
-            req.devicetype = deveiceInfo.devicetype;
-        }
-        if (deveiceInfo.deviceability) {
-            req.deviceability = deveiceInfo.deviceability;
-        }
         let msg = self._info(req, 'select runtime, start.');
         BX_INFO(msg);
         msg = self._info(req, 'select runtime, req:');
@@ -2837,14 +4402,14 @@ class Scheduler {
     }
     createEvent(eventID, onComplete) {
         let self = this;
-        let thisRuntime = getCurrentRuntime();
-        let runtimeInfo = thisRuntime.createRuntimeInfo();
+        let runtimeInfo = self._getRuntimeInfo();
         let req = {
             'cmd': 'selectevent',
             'uid': self.uid,
             'token': self.token,
             'traceid': BaseLib.createGUID(),
             'appid': self.appid,
+            'clientType': runtimeInfo.type,
             'eventid': eventID,
             'runtimeInfo': runtimeInfo,
         };
@@ -2873,14 +4438,14 @@ class Scheduler {
     }
     removeEvent(eventID, onComplete) {
         let self = this;
-        let thisRuntime = getCurrentRuntime();
-        let runtimeInfo = thisRuntime.createRuntimeInfo();
+        let runtimeInfo = self._getRuntimeInfo();
         let req = {
             "cmd": "releaseevent",
             "uid": self.uid,
             "token": self.token,
             "traceid": BaseLib.createGUID(),
             "appid": self.appid,
+            'clientType': runtimeInfo.type,
             "eventid": eventID,
             'runtimeInfo': runtimeInfo,
         };
@@ -2902,14 +4467,14 @@ class Scheduler {
     }
     selectBusForEvent(eventID, onComplete) {
         let self = this;
-        let thisRuntime = getCurrentRuntime();
-        let runtimeInfo = thisRuntime.createRuntimeInfo();
+        let runtimeInfo = self._getRuntimeInfo();
         let req = {
             "cmd": "selectbus",
             "uid": self.uid,
             "token": self.token,
             "traceid": BaseLib.createGUID(),
             "appid": self.appid,
+            'clientType': runtimeInfo.type,
             "eventid": eventID,
             'runtimeInfo': runtimeInfo,
         };
@@ -2930,10 +4495,12 @@ class Scheduler {
         });
     }
      callFunction(functionName, deveiceInfo, onComplete) {
+        let runtimeInfo = self._getRuntimeInfo();
         let req = {
             'cmd': 'callfunction',
             'traceid': BaseLib.createGUID(),
             'appid': this.appid,
+            'clientType': runtimeInfo.type,
             'functionName': functionName,
         };
         if (deveiceInfo.devicegroupid) {
@@ -2957,6 +4524,29 @@ class Scheduler {
             }
         });
     }
+}
+function initCurrentRuntime() {
+    let runtimeID = BaseLib.createUID(BX_UID_TYPE_RUNTIME,BX_RUNTIME_LEVEL);
+    let token = BaseLib.createGUID();
+    var thisDevice = new Device();
+    function initDeviceConfig(device, appID) {
+            device.m_type = "pc_client";
+            device.m_ability = [];
+            device.m_ownerApps = appID;
+            device.m_runtimeRootDir = "";
+            device.m_drivers = {};
+            device.meta ={};
+            return ErrorCode.RESULT_OK;
+    }
+    Application._currentRuntime = new RuntimeInstance(runtimeID,token,Application._currentApp);
+    Application._currentRuntime.m_ownerDevice =thisDevice;
+    let deviceID = BaseLib.createGUID();
+    Application._currentRuntime.m_ownerDevice = new Device(deviceID);
+    let ownerUserID = BaseLib.createGUID();
+    Application._currentRuntime.m_ownerDevice.setOwnerUserID(ownerUserID);
+    initDeviceConfig(Application._currentRuntime.m_ownerDevice, Application._currentApp.getID());
+    BX_INFO("initCurrentRuntime OK");
+    return ErrorCode.RESULT_OK;
 }
 function initCurrentRuntime(runtimeRootDir,localKMPath) {
     let runtimeID = BaseLib.createUID(BX_UID_TYPE_RUNTIME,BX_RUNTIME_LEVEL);
@@ -2995,12 +4585,28 @@ function getCurrentRuntime() {
 class RuntimeInfo {
     constructor(runtimeID) {
         this.id = runtimeID;
-        this.appid = "";
         this.category = "runtime";
-        this.addr = new Array();
+        this.type = "";
         this.ownerDeviceID = "";
         this.ownerAppID = "";
-        this.ability = new Array();
+        this.ability = [];
+        this.drivers = [];
+        this.tag = [];
+        this.addr = [];
+        this.storages = [];
+    }
+}
+
+class UserRuntimeInfo{
+    constructor(runtimeInfo){
+        this.id = runtimeInfo.id;
+        this.category = runtimeInfo.category;
+        this.type = runtimeInfo.type;
+        this.ownerDeviceID = runtimeInfo.ownerDeviceID;
+        this.ownerAppID = runtimeInfo.ownerAppID;
+        this.ability = runtimeInfo.ability;
+        this.drivers = runtimeInfo.drivers;
+        this.tag = runtimeInfo.tag;
     }
 }
 
@@ -3009,9 +4615,12 @@ class RuntimeInstance {
         this.m_app = theApp;
         this.m_id = runtimeID;
         this.m_token = runtimeToken;
-        this.m_ability = new Array();
+        this.m_ability = [];
         this.m_runtimeDir = "";
-        this.m_addr = new Array();
+        this.m_addr = [];
+        this.m_advanceState = {};
+        this.m_innerEvent = {};
+        this.m_advanceState["WORK"] = {state:"IDLE",lastChange:BaseLib.getNow()};
         this.m_packages = {};
         this.m_proxyPackages = {};
         this.m_loadingPackage = {};
@@ -3021,11 +4630,13 @@ class RuntimeInstance {
         this.m_driverLoadRule = {};
         this.m_eventManager = null;
         this.m_allCaches = {};
+        this.m_tags = [];
         this.m_allStorages = {};
         this.m_allBindStoragePath = {};
         this.m_logger = null;
         let schedulerhost = theApp.getSchedulerHost();
         this.scheduler = new Scheduler(schedulerhost,this.m_id,this.m_token,this.m_app.getID());
+        this.installDefaultDriverFromNode();
     }
     getSchedulerClient(){
         return this.scheduler;
@@ -3038,6 +4649,11 @@ class RuntimeInstance {
             for (let i=0; i<info.addr.length;++i) {
                 this.m_addr.push({"ip":info.addr[i].ip, "port":info.addr[i].port});
             }
+        }
+        if(info.tags) {
+            this.m_tags = info.tags;
+        } else {
+            this.m_tags = [];
         }
         if(info.storages) {
             if (info.storages.length > 0) {
@@ -3057,9 +4673,35 @@ class RuntimeInstance {
         };
         this.m_driverLoadRule["bx.mysql.client"] = {
             "load" : function (did) {
-                return require("../drivers/mysql").load();
+                return require("mysql");
             }
         };
+    }
+    on(eventID,func) {
+        let callbackList = this.m_innerEvent[eventID];
+        if(callbackList) {
+            callbackList.push(func);
+        } else {
+            callbackList = [];
+            callbackList.push(func);
+            this.m_innerEvent[eventID] = callbackList;
+        }
+    }
+    _fire(eventID,param) {
+        let callbackList = this.m_innerEvent[eventID];
+        if(callbackList) {
+            let i = 0;
+            let doCallback = () => {
+                if(i < callbackList.length) {
+                    let func = callbackList [i];
+                    func(param,()=>{
+                        i = i + 1;
+                        doCallback();
+                    })
+                }
+            }
+            doCallback();
+        }
     }
     getInstanceID() {
         return this.m_id;
@@ -3080,22 +4722,23 @@ class RuntimeInstance {
         return this.m_app;
     }
     createRuntimeInfo() {
-        let result = new RuntimeInfo(this.m_id);
-        result.ownerDeviceID = this.m_ownerDevice.getDeviceID();
-        result.appid = this.m_app.getID();
-        result.ability = this.m_ability.slice(0);
-        result.deviceType = this.m_ownerDevice.getDeviceType();
+        let info = new RuntimeInfo(this.m_id);
+        info.ownerDeviceID = this.m_ownerDevice.getDeviceID();
+        info.ownerAppID = this.m_app.getID();
+        info.ability = this.m_ability.slice(0);
+        info.tags = this.m_tags.slice(0);
+        info.deviceType = this.m_ownerDevice.getDeviceType();
         if(this.m_allBindStoragePath) {
-            result.storages = [];
+            info.storages = [];
             for(let gpath in this.m_allBindStoragePath) {
-                result.storages.push(gpath);
+                info.storages.push(gpath);
             }
         }
         if(this.m_addr!=null && this.m_addr.length>0){
-            result.addr.push({"ip":this.m_addr[0].ip, "port":this.m_addr[0].port});
+            info.addr.push({"ip":this.m_addr[0].ip, "port":this.m_addr[0].port});
         }
-        result.isOnline = true;
-        return result;
+        info.type = BaseLib.getClientType();
+        return info;
     }
     getGlobalEventManager() {
         if(this.m_eventManager == null) {
@@ -3105,6 +4748,12 @@ class RuntimeInstance {
     }
     getKnowledgeManager () {
         return this.m_knowledegeManager;
+    }
+    getRuntimeAdvanceState() {
+        return this.m_advanceState;
+    }
+    setRuntimeAdvanceState(key,value) {
+        this.m_advanceState[key] = value;
     }
     getRuntimeCache(globalPath) {
         return this.m_allCaches[globalPath];
@@ -3124,11 +4773,11 @@ class RuntimeInstance {
         return ErrorCode.RESULT_OK;
     }
     enableRuntimeStorage(globalPath) {
-    let localPath = this._localRuntimeStorageRoot + globalPath;
-    BaseLib.mkdirsSync(localPath);
-    let newStorage = new RuntimeStorage(this,localPath);
-    this.m_allStorages[globalPath] = newStorage;
-    return true;
+        let localPath = this._localRuntimeStorageRoot + globalPath;
+        BaseLib.mkdirsSync(localPath);
+        let newStorage = new RuntimeStorage(this,localPath);
+        this.m_allStorages[globalPath] = newStorage;
+        return true;
     }
     bindRuntimeStorage(globalPath,localPath) {
         this.m_allBindStoragePath[globalPath] = localPath;
@@ -3143,7 +4792,7 @@ class RuntimeInstance {
         }
         return null;
     }
-    isXARPackageCanLoad(packageInfo,instanceID) {
+    isXARPackageCanLoad(packageInfo,runtimeInfo) {
         return true;
     }
     getLoadedXARPackage(xarID) {
@@ -3158,7 +4807,7 @@ class RuntimeInstance {
         }
         return resultPackage;
     }
-    loadXARPackage(xarInfo,onComplete) {
+    loadXARPackage(xarInfo,onComplete,isProxy=false) {
         let resultPackage = null;
         resultPackage = this.m_packages[xarInfo];
         if(resultPackage) {
@@ -3186,6 +4835,7 @@ class RuntimeInstance {
             for(let i = 0;i < loadingXAR.onCompleteFuncs; ++ i) {
                 BaseLib.asynCall(loadingXAR.onCompleteFuncs[i]);
             }
+            delete thisRuntime.m_loadingPackage[xarInfo];
         }
         let repositoryList = this.m_app.repositoryList.slice(0);
         let tryLoad = (pos) => {
@@ -3209,50 +4859,52 @@ class RuntimeInstance {
                     tryLoad(pos+1);
                     return;
                 }
-                xarConfig.baseURL = repositoryHost;
-                if(xarConfig.knowledges) {
-                    for (let i = 0; i < xarConfig.knowledges.length; ++i) {
-                        thisRuntime.m_knowledegeManager.dependKnowledge(xarConfig.knowledges[i].key,xarConfig.knowledges[i].type);
-                    }
+                let isCanload = false;
+                if(isProxy) {
+                    isCanload = true;
                 }
-                if(xarConfig.storages) {
-                    for(let i=0;i<xarConfig.storages.length;++i) {
-                        thisRuntime.enableRuntimeStorage(xarConfig.storages[i]);
-                    }
+                if(!isCanload) {
+                    isCanload = thisRuntime.isXARPackageCanLoad(xarConfig,thisRuntime.createRuntimeInfo())
                 }
-                if(xarConfig.caches) {
-                    for(let i=0;i<xarConfig.caches.length;++i) {
-                        thisRuntime.enableRuntimeCache(xarConfig.caches[i]);
+                if(isCanload) {
+                    xarConfig.baseURL = repositoryHost;
+                    if(xarConfig.knowledges) {
+                        for (let i = 0; i < xarConfig.knowledges.length; ++i) {
+                            thisRuntime.m_knowledegeManager.dependKnowledge(xarConfig.knowledges[i].key,xarConfig.knowledges[i].type);
+                        }
                     }
-                }
-                thisRuntime.m_knowledegeManager.ready(function() {
-                    if(thisRuntime.isXARPackageCanLoad(xarConfig,thisRuntime.m_id)) {
+                    if(xarConfig.storages) {
+                        for(let i=0;i<xarConfig.storages.length;++i) {
+                            thisRuntime.enableRuntimeStorage(xarConfig.storages[i]);
+                        }
+                    }
+                    thisRuntime.m_knowledegeManager.ready(function() {
                         let xarPackage = new XARPackage(xarConfig,thisRuntime);
                         thisRuntime.m_packages[xarInfo] = xarPackage;
                         xarPackage.state = XARPackage.XAR_STATE_RUNING;
                         loader.loadFile(xarID, xarVersion,"onload.js", function(ret, module){
                             if (!ret) {
                                 thisRuntime.m_packages[xarInfo] = null;
-                                onComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
+                                callOnComplete(null,ErrorCode.RESULT_SCRIPT_ERROR);
                             } else {
-                                onComplete(xarPackage, module);
+                                callOnComplete(xarPackage, module);
                             }
                         });
-                    }else{
-                        if (!proxyLoaded) {
-                            proxyLoaded = true;
-                            let proxyInfo = xarID + "_proxy";
-                            if (xarVersion != "") {
-                                proxyInfo += "|";
-                                proxyInfo += "xarVersion";
-                            }
-                            BX_INFO("can not load remote package:"+xarInfo+", load proxy package:"+proxyInfo);
-                            thisRuntime.loadXARPackage(proxyInfo, onComplete);
-                        } else {
-                            onComplete(null,ErrorCode.RESULT_NOT_FOUND);
+                    });
+                } else {
+                    if (!proxyLoaded) {
+                        proxyLoaded = true;
+                        let proxyInfo = xarID + "_proxy";
+                        if (xarVersion != "") {
+                            proxyInfo += "|";
+                            proxyInfo += xarVersion;
                         }
+                        BX_WARN("cann't local load package:"+xarInfo+",will load proxy package:"+proxyInfo);
+                        thisRuntime.loadXARPackage(proxyInfo, onComplete,true);
+                    } else {
+                        callOnComplete(null,ErrorCode.RESULT_NOT_FOUND);
                     }
-                });
+                }
             });
         };
         tryLoad(0);
@@ -3270,80 +4922,26 @@ class RuntimeInstance {
         }
         return null;
     }
-    selectRuntimeByFilter(deviceType,deviceAbility,packageInfo,deviceGroupID) {
-        let knowledegePath = "";
-        if(deviceGroupID) {
-            knowledegePath = "global.runtimes." + deviceGroupID;
-        } else {
-            knowledegePath = "global.runtimes";
-        }
+    selectRuntimeByFilter(packageInfo) {
+        let knowledegePath = "global.runtimes";
         let runtimeMap = getCurrentRuntime().getKnowledgeManager().getKnowledge(knowledegePath).mapGetClone();
         let result = [];
         for(let rid in runtimeMap) {
             let runtimeInfo = runtimeMap[rid];
-            let thisDeviceOK = true;
-            if(deviceType) {
-                if(runtimeInfo.type == deviceType) {
-                    thisDeviceOK = true;
-                } else {
-                    thisDeviceOK = false;
-                }
-            }
-            if(thisDeviceOK) {
-                if(deviceAbility) {
-                    if(BaseLib.isArrayContained(runtimeInfo.ability,deviceAbility)) {
-                        thisDeviceOK = true;
-                    } else {
-                        thisDeviceOK = false;
-                    }
-                }
-            }
-            if(thisDeviceOK) {
-                if(packageInfo) {
-                    if(packageInfo.drivers) {
-                        if(packageInfo.drivers.length > 0) {
-                            if(BaseLib.isArrayContained(runtimeInfo.drivers,packageInfo.drivers)) {
-                                thisDeviceOK = true;
-                            } else {
-                                thisDeviceOK = false;
-                            }
-                        }
-                    }
-                }
-            }
-            if(thisDeviceOK) {
-                if(packageInfo) {
-                    if(packageInfo.storages) {
-                        if(packageInfo.storages.length > 0) {
-                            if(runtimeInfo.ability.indexOf("storage") >= 0) {
-                                thisDeviceOK = true;
-                            } else {
-                                thisDeviceOK = false;
-                            }
-                        }
-                    }
-                }
-            }
-            if(thisDeviceOK) {
+            if (this.isXARPackageCanLoad(packageInfo, runtimeInfo)) {
                 result.push(runtimeInfo);
             }
         }
-        if(result.length > 0)
-        {
+        if(result.length > 0) {
             let i= BaseLib.getRandomNum(0,result.length-1);
             return result[i];
         }
         BX_ERROR("ERROR! Cann't select valid runtime!");
         return null;
     }
-    selectRuntimeByStoragePath(storagePathList,deviceGroupID) {
+    selectRuntimeByStoragePath(storagePathList) {
         let thisRuntime = this;
-        let knowledgePath = "";
-        if(deviceGroupID) {
-            knowledgePath = "global.storages." + deviceGroupID;
-        } else {
-            knowledgePath = "global.storages";
-        }
+        let knowledgePath = "global.storages";
         let bindInfo = thisRuntime.getKnowledgeManager().getKnowledge(knowledgePath);
         if(bindInfo) {
             let allMountInfo = bindInfo.mapGetClone();
@@ -3366,11 +4964,10 @@ class RuntimeInstance {
             console.log("ERROR,cann't read knowledge:" + knowledgePath);
         }
     }
-    selectTargetRuntime(packageID,packageInfo,selectKey,useCache,onComplete) {
+    selectTargetRuntime(packageID,packageInfo,useCache,onComplete) {
         let self = this;
         BX_INFO("selectTargetRuntime packageID:" + packageID
             + " packageInfo.version:" + packageInfo.version
-            + " selectKey:" + selectKey
         );
         let thisRuntime = getCurrentRuntime();
         let ruleInfo = thisRuntime.getKnowledgeManager().getKnowledge("global.loadrules");
@@ -3381,39 +4978,27 @@ class RuntimeInstance {
             BX_INFO("cann't read global.loadrules");
             onComplete(null);
         }
-        let deviceGroupID = null;
         let deviceType = null;
         let deviceAbility = null;
         if(module_rule) {
             let rule = module_rule[packageID];
             if (rule) {
-                let runtimeGroupID = rule["runtime-group"];
-                if (runtimeGroupID) {
-                    console.log("NEED IMP!");
-                } else {
-                    deviceGroupID = rule["device-group"];
-                    deviceType = rule["device-type"];
-                    deviceAbility = rule["device-ability"];
-                }
+                deviceType = rule["device-type"];
+                deviceAbility = rule["device-ability"];
             }
         }
-        let deveiceInfo = {
-            "devicegroupid":deviceGroupID,
-            "devicetype":deviceType,
-            "deviceability":deviceAbility
-        };
         let selectExsitRuntime = function(){
             let storagePathList = packageInfo.storages;
             let resultRuntime = null;
             if(storagePathList && storagePathList.length > 0) {
-                resultRuntime = thisRuntime.selectRuntimeByStoragePath(storagePathList,deviceGroupID);
+                resultRuntime = thisRuntime.selectRuntimeByStoragePath(storagePathList);
             }else{
-                resultRuntime = thisRuntime.selectRuntimeByFilter(deviceType,deviceAbility,packageInfo,deviceGroupID);
+                resultRuntime = thisRuntime.selectRuntimeByFilter(packageInfo);
             }
             return resultRuntime;
         };
         let selectNewRuntime = function(callback){
-            self.scheduler.selectRuntime(packageInfo,deveiceInfo,function(err,runtime){
+            self.scheduler.selectRuntime(deviceType,deviceAbility,packageInfo.drivers,packageInfo.storages,function(err,runtime){
                 if(err){
                     BX_ERROR("select runtime from scheduler failed.");
                     return;
@@ -3449,25 +5034,14 @@ class RuntimeInstance {
         let postBody = {};
         postBody.seq = BaseLib.createGUID();
         postBody.src = this.m_id;
+        postBody.dest = remoteRuntimeInfo.id;
         postBody.function_name = functionname;
         postBody.trace_id = traceID;
         postBody.args = BaseLib.encodeParamAsJson(args);
         postBody.knowledges = this.m_knowledegeManager.getDependsKnowledgeInfo();
         postBody.ccid = callChain.getID();
         BaseLib.postJSONCall(postURL,postBody,function(result,errorCode,respBody) {
-            if(errorCode == ErrorCode.RESULT_NEED_SYNC) {
-                BX_INFO("knowledge not sync,need sync before RPC.");
-                for(let k in respBody.knowledges) {
-                    let thisInfo = thisRuntime.m_knowledegeManager.getKnowledge(k);
-                    thisRuntime.m_knowledegeManager.dependKnowledge(k,thisInfo.getType(),null);
-                }
-                thisRuntime.m_knowledegeManager.ready(function() {
-                    BX_INFO("knowledge synced,auto retry RPC");
-                    thisRuntime.postRPCCall(remoteRuntimeInfo,functionname,args,traceID,onComplete);
-                });
-            } else {
-                onComplete(result,errorCode);
-            }
+            onComplete(result,errorCode);
         });
     }
 }
@@ -3475,6 +5049,7 @@ class RuntimeInstance {
 class CallChain {
     constructor(parentCC = null,ccid="") {
         let needLogStart = true;
+        CallChain.s_total ++;
         if(ccid.length <= 0) {
             this.m_id = BaseLib.createGUID();
         } else {
@@ -3544,6 +5119,9 @@ class CallChain {
             if(currentCodeFrame.funcName === funcName) {
                 this.m_callStack.pop();
                 BX_INFO("##RETURN codeframe " + currentCodeFrame.funcName + "@" + currentCodeFrame.id,getCurrentTraceInfo(this));
+                if(this.m_callStack.length == 0){
+                    CallChain.s_total --;
+                }
                 return;
             }
         }
@@ -3562,6 +5140,7 @@ class CallChain {
     }
 }
 CallChain.s_one = null;
+CallChain.s_total = 0;
 function setCurrentCallChain(callChain) {
     CallChain.s_one = callChain;
 }
@@ -3752,6 +5331,7 @@ class OwnerUser {
         return this.m_appList;
     }
 }
+var WebSocket = require("ws");
 
 class WSReqList {
     constructor() {
@@ -3798,6 +5378,7 @@ class WebSocketClient {
         this.onclose = null;
     }
     _send(reqString) {
+        this.m_sock.send(reqString);
     }
     GetID() {
         return this.m_id;
@@ -3806,6 +5387,26 @@ class WebSocketClient {
         assert(!this.m_opened);
         BX_INFO("will start webscoket to:", this.m_addr, this.m_id);
         let This = this;
+        this.m_sock = new WebSocket(this.m_addr, {
+            protocolVersion: 8,
+            origin: 'http://websocket.org'
+        });
+        this.m_sock.on("open", function() {
+            BX_INFO("websocket connected to", This.m_addr, This.m_id);
+            This._OnOpen();
+        });
+        this.m_sock.on("error", function(err) {
+            BX_ERROR("websocket break from", This.m_addr, This.m_id);
+            console.log(err);
+        });
+        this.m_sock.on("close", function() {
+            BX_ERROR("websocket close from ", This.m_addr, This.m_id);
+            This._OnClose();
+        });
+        this.m_sock.on("message", function(data, flags) {
+            BX_INFO("websocket recv ", data, This.m_id);
+            This._OnMessage(data);
+        });
     }
     Register(eventList, OnComplete) {
         const req = this.m_reqlist.Create("register", function(resp) {
@@ -4064,7 +5665,8 @@ class GlobalEventManager {
             if (busURL.length == 0) {
                 self.m_schedulerClient.selectBusForEvent(eventID, function(err,busInfo) {
                     if (err === ErrorCode.RESULT_OK) {
-                        doGetBusClientFromURL(busInfo.busurl);
+                        busURL = BaseLib.getUrlFromNodeInfo(busInfo);
+                        doGetBusClientFromURL(busURL);
                     } else {
                         onComplete(null, err);
                     }
@@ -4414,6 +6016,7 @@ module.exports.XARPackage = XARPackage;
 module.exports.RuntimeInstance = RuntimeInstance;
 module.exports.Scheduler = Scheduler;
 module.exports.RuntimeInfo = RuntimeInfo;
+module.exports.UserRuntimeInfo = UserRuntimeInfo;
 module.exports.getCurrentCallChain = getCurrentCallChain;
 module.exports.setCurrentCallChain = setCurrentCallChain;
 module.exports.getCurrentTraceInfo = getCurrentTraceInfo;
@@ -4426,7 +6029,6 @@ module.exports.WebSocketClient = WebSocketClient;
 module.exports.KServerXHRClient = KServerXHRClient;
 module.exports.InfoNode = InfoNode;
 module.exports.KnowledgeManager = KnowledgeManager;
-module.exports.IDGeneratorClient = IDGeneratorClient;
 module.exports.GlobalEventManager = GlobalEventManager;
 module.exports.SystemEvent = SystemEvent;
 module.exports.initCurrentRuntime = initCurrentRuntime;
